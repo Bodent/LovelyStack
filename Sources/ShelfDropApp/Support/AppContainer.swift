@@ -1,0 +1,355 @@
+import AppKit
+import Foundation
+import ShelfDropCore
+
+@MainActor
+final class AppContainer: ObservableObject {
+    static let shared = AppContainer()
+
+    let supportDirectory: URL
+    let store: ShelfStore
+    let catalog: FileCatalogService
+    let actions: FileActionService
+    @Published var model: ShelfViewModel
+
+    private init() {
+        let supportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("LovelyStack", isDirectory: true)
+        self.supportDirectory = supportRoot
+        self.store = ShelfStore(baseDirectory: supportRoot)
+        self.catalog = FileCatalogService()
+        self.actions = FileActionService(baseDirectory: supportRoot)
+        self.model = ShelfViewModel(store: store, catalog: catalog, actions: actions)
+    }
+}
+
+@MainActor
+final class ShelfViewModel: ObservableObject {
+    @Published var sessions: [ShelfSession]
+    @Published var selectedSessionID: UUID
+    @Published var selectedItemIDs = Set<UUID>()
+    @Published var recentDestinations: [URL]
+    @Published var review: BatchPreview = .init(title: "Review", changes: [], issues: [], duplicateGroups: [])
+    @Published var pendingPreview: PendingPreview?
+    @Published var errorMessage: String?
+    @Published var searchText = ""
+    @Published var renamePattern = RenamePattern()
+    @Published var metadataRequest = MetadataEditRequest()
+    @Published var imageTransformPlan = ImageTransformPlan()
+    @Published var archiveStrategy: ArchiveStrategy = .createdMonth
+    @Published var isBusy = false
+
+    private let store: ShelfStore
+    private let catalog: FileCatalogService
+    private let actions: FileActionService
+
+    init(store: ShelfStore, catalog: FileCatalogService, actions: FileActionService) {
+        self.store = store
+        self.catalog = catalog
+        self.actions = actions
+
+        let snapshot = store.load()
+        let initialSessions = snapshot.sessions.isEmpty ? [ShelfSession()] : snapshot.sessions
+        self.sessions = initialSessions
+        self.selectedSessionID = initialSessions[0].id
+        self.recentDestinations = snapshot.recentDestinations
+        recalculateReview()
+    }
+
+    var selectedSessionIndex: Int {
+        sessions.firstIndex(where: { $0.id == selectedSessionID }) ?? 0
+    }
+
+    var selectedSession: ShelfSession {
+        get { sessions[selectedSessionIndex] }
+        set { sessions[selectedSessionIndex] = newValue }
+    }
+
+    var visibleItems: [ShelfItem] {
+        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return selectedSession.items
+        }
+        let query = searchText.localizedLowercase
+        return selectedSession.items.filter {
+            $0.displayName.localizedLowercase.contains(query) ||
+            $0.kindDescription.localizedLowercase.contains(query) ||
+            $0.tags.joined(separator: " ").localizedLowercase.contains(query)
+        }
+    }
+
+    var selectedItems: [ShelfItem] {
+        selectedSession.items.filter { selectedItemIDs.contains($0.id) }
+    }
+
+    var pinnedSessions: [ShelfSession] {
+        sessions.filter(\.isPinned)
+    }
+
+    var recentSessions: [ShelfSession] {
+        sessions.filter { !$0.isPinned }
+    }
+
+    var canUndo: Bool {
+        actions.canUndo
+    }
+
+    func createShelf() {
+        sessions.insert(ShelfSession(title: "Shelf \(sessions.count + 1)"), at: 0)
+        selectedSessionID = sessions[0].id
+        selectedItemIDs.removeAll()
+        persist()
+        recalculateReview()
+    }
+
+    func togglePinSelectedShelf() {
+        selectedSession.isPinned.toggle()
+        selectedSession.updatedAt = Date()
+        persist()
+    }
+
+    func renameSelectedShelf(_ title: String) {
+        selectedSession.title = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? selectedSession.title : title
+        selectedSession.updatedAt = Date()
+        persist()
+    }
+
+    func select(sessionID: UUID) {
+        selectedSessionID = sessionID
+        selectedItemIDs.removeAll()
+        recalculateReview()
+    }
+
+    func addFiles(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let newItems = catalog.makeShelfItems(urls: urls)
+        let existingURLs = Set(selectedSession.items.map(\.url))
+        let deduped = newItems.filter { !existingURLs.contains($0.url) }
+        guard !deduped.isEmpty else { return }
+        selectedSession.items.append(contentsOf: deduped)
+        selectedSession.updatedAt = Date()
+        selectedItemIDs = Set(deduped.map(\.id))
+        persist()
+        recalculateReview()
+    }
+
+    func removeSelectedFromShelf() {
+        guard !selectedItemIDs.isEmpty else { return }
+        selectedSession.items.removeAll { selectedItemIDs.contains($0.id) }
+        selectedSession.updatedAt = Date()
+        selectedItemIDs.removeAll()
+        persist()
+        recalculateReview()
+    }
+
+    func clearShelf() {
+        selectedSession.items.removeAll()
+        selectedSession.updatedAt = Date()
+        selectedItemIDs.removeAll()
+        persist()
+        recalculateReview()
+    }
+
+    func revealSelectedInFinder() {
+        let urls = selectedItems.map(\.url)
+        guard !urls.isEmpty else { return }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
+    func copySelectedPaths() {
+        let paths = selectedItems.map(\.url.path).joined(separator: "\n")
+        guard !paths.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(paths, forType: .string)
+    }
+
+    func openQuickLook() {
+        let urls = selectedItems.map(\.url)
+        guard !urls.isEmpty else { return }
+        if urls.count == 1 {
+            NSWorkspace.shared.open(urls[0])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting(urls)
+        }
+    }
+
+    func performUndo() {
+        do {
+            if let mutation = try actions.undoLastBatch() {
+                apply(mutation)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func previewMove(destination: URL, mode: FileOperationMode) {
+        let preview = actions.previewMove(items: selectedItems, to: destination, mode: mode)
+        presentPreview(preview) { [weak self] in
+            self?.runAction {
+                let mutation = try self?.actions.executeMove(items: self?.selectedItems ?? [], to: destination, mode: mode)
+                if let mutation {
+                    self?.remember(destination: destination)
+                    self?.apply(mutation)
+                }
+            }
+        }
+    }
+
+    func previewArchive(root: URL) {
+        let preview = actions.previewArchive(items: selectedItems, root: root, strategy: archiveStrategy)
+        presentPreview(preview) { [weak self] in
+            self?.runAction {
+                let mutation = try self?.actions.executeArchive(items: self?.selectedItems ?? [], root: root, strategy: self?.archiveStrategy ?? .createdMonth)
+                if let mutation {
+                    self?.remember(destination: root)
+                    self?.apply(mutation)
+                }
+            }
+        }
+    }
+
+    func previewRename() {
+        let preview = actions.previewRename(items: selectedItems, pattern: renamePattern)
+        presentPreview(preview) { [weak self] in
+            self?.runAction {
+                let mutation = try self?.actions.executeRename(items: self?.selectedItems ?? [], pattern: self?.renamePattern ?? RenamePattern())
+                if let mutation {
+                    self?.apply(mutation)
+                }
+            }
+        }
+    }
+
+    func previewMetadata() {
+        let preview = actions.previewMetadata(items: selectedItems, request: metadataRequest)
+        presentPreview(preview) { [weak self] in
+            self?.runAction {
+                let mutation = try self?.actions.executeMetadata(items: self?.selectedItems ?? [], request: self?.metadataRequest ?? MetadataEditRequest())
+                if let mutation {
+                    self?.apply(mutation)
+                }
+            }
+        }
+    }
+
+    func previewSafeDelete() {
+        let preview = actions.previewSafeDelete(items: selectedItems)
+        presentPreview(preview) { [weak self] in
+            self?.runAction {
+                let mutation = try self?.actions.executeSafeDelete(items: self?.selectedItems ?? [])
+                if let mutation {
+                    self?.apply(mutation)
+                }
+            }
+        }
+    }
+
+    func previewZip(destination: URL, baseName: String) {
+        let preview = actions.previewZip(items: selectedItems, destinationDirectory: destination, baseName: baseName)
+        presentPreview(preview) { [weak self] in
+            self?.runAction {
+                let mutation = try self?.actions.executeZip(items: self?.selectedItems ?? [], destinationDirectory: destination, baseName: baseName)
+                if let mutation {
+                    self?.remember(destination: destination)
+                    self?.apply(mutation)
+                }
+            }
+        }
+    }
+
+    func previewImageTransform(destination: URL) {
+        let preview = actions.previewImageTransform(items: selectedItems, plan: imageTransformPlan, destinationDirectory: destination)
+        presentPreview(preview) { [weak self] in
+            self?.runAction {
+                let mutation = try self?.actions.executeImageTransform(items: self?.selectedItems ?? [], plan: self?.imageTransformPlan ?? ImageTransformPlan(), destinationDirectory: destination)
+                if let mutation {
+                    self?.remember(destination: destination)
+                    self?.apply(mutation)
+                }
+            }
+        }
+    }
+
+    func previewCreatePDF(destination: URL, baseName: String) {
+        let preview = actions.previewPDF(from: selectedItems, destinationDirectory: destination, baseName: baseName)
+        presentPreview(preview) { [weak self] in
+            self?.runAction {
+                let mutation = try self?.actions.executePDF(from: self?.selectedItems ?? [], destinationDirectory: destination, baseName: baseName)
+                if let mutation {
+                    self?.remember(destination: destination)
+                    self?.apply(mutation)
+                }
+            }
+        }
+    }
+
+    func dismissPreview() {
+        pendingPreview = nil
+    }
+
+    private func remember(destination: URL) {
+        recentDestinations.removeAll { $0 == destination }
+        recentDestinations.insert(destination, at: 0)
+        recentDestinations = Array(recentDestinations.prefix(6))
+        persist()
+    }
+
+    private func presentPreview(_ preview: BatchPreview, onConfirm: @escaping () -> Void) {
+        pendingPreview = PendingPreview(preview: preview, onConfirm: onConfirm)
+    }
+
+    private func runAction(_ block: () throws -> Void) {
+        do {
+            isBusy = true
+            try block()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isBusy = false
+        pendingPreview = nil
+    }
+
+    private func apply(_ mutation: BatchMutation) {
+        var updatedItems = selectedSession.items
+
+        updatedItems.removeAll { mutation.removedItemIDs.contains($0.id) || mutation.removedURLs.contains($0.url) }
+        updatedItems = updatedItems.map { item in
+            var updated = item
+            if let newURL = mutation.updatedItemLocations[item.id] {
+                updated.url = newURL
+                return catalog.refresh(item: updated) ?? updated
+            }
+            return catalog.refresh(item: item) ?? item
+        }
+
+        let additions = catalog.makeShelfItems(urls: mutation.createdURLs + mutation.restoredURLs)
+        let existingURLs = Set(updatedItems.map(\.url))
+        let filteredAdditions = additions.filter { !existingURLs.contains($0.url) }
+        updatedItems.append(contentsOf: filteredAdditions)
+
+        selectedSession.items = updatedItems.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        selectedSession.updatedAt = Date()
+        selectedItemIDs.subtract(mutation.removedItemIDs)
+        persist()
+        recalculateReview()
+    }
+
+    private func recalculateReview() {
+        review = actions.review(items: selectedSession.items)
+    }
+
+    private func persist() {
+        do {
+            let snapshot = AppSnapshot(sessions: sessions, recentDestinations: recentDestinations)
+            try store.save(snapshot)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+struct PendingPreview: Identifiable {
+    let id = UUID()
+    let preview: BatchPreview
+    let onConfirm: () -> Void
+}

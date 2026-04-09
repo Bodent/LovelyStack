@@ -1,0 +1,66 @@
+name: LovelyStack
+options:
+  minimumXcodeGenVersion: 2.45.0
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    MACOSX_DEPLOYMENT_TARGET: 14.0
+configs:
+  Debug: debug
+  Release: release
+targets:
+  ShelfDropCore:
+    type: framework
+    platform: macOS
+    sources:
+      - path: Sources/ShelfDropCore
+    settings:
+      base:
+        PRODUCT_NAME: ShelfDropCore
+        PRODUCT_BUNDLE_IDENTIFIER: com.lovelystack.ShelfDropCore
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+  ShelfDropApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/ShelfDropApp
+    dependencies:
+      - target: ShelfDropCore
+    settings:
+      base:
+        PRODUCT_NAME: ShelfDrop
+        PRODUCT_BUNDLE_IDENTIFIER: com.lovelystack.ShelfDrop
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.1.0
+        INFOPLIST_KEY_CFBundleDisplayName: ShelfDrop
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+  ShelfDropCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/ShelfDropCoreTests
+    dependencies:
+      - target: ShelfDropCore
+    settings:
+      base:
+        PRODUCT_NAME: ShelfDropCoreTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.lovelystack.ShelfDropCoreTests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+schemes:
+  ShelfDrop:
+    build:
+      targets:
+        ShelfDropApp: all
+        ShelfDropCore: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - ShelfDropCoreTests
