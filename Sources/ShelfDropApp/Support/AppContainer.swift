@@ -38,6 +38,7 @@ final class ShelfViewModel: ObservableObject {
     @Published var imageTransformPlan = ImageTransformPlan()
     @Published var archiveStrategy: ArchiveStrategy = .createdMonth
     @Published var isBusy = false
+    private(set) var loadWarning: String?
 
     private let store: ShelfStore
     private let catalog: FileCatalogService
@@ -48,7 +49,10 @@ final class ShelfViewModel: ObservableObject {
         self.catalog = catalog
         self.actions = actions
 
-        let snapshot = store.load()
+        let loadResult = store.load()
+        self.loadWarning = loadResult.warning
+
+        let snapshot = loadResult.snapshot
         let restoredSessions = snapshot.sessions.isEmpty ? [ShelfSession()] : snapshot.sessions
         let initialSessions = restoredSessions.map { session in
             var refreshedSession = session
@@ -60,7 +64,9 @@ final class ShelfViewModel: ObservableObject {
         self.sessions = initialSessions
         self.selectedSessionID = initialSessions[0].id
         self.recentDestinations = snapshot.recentDestinations
-        persist()
+        if loadResult.warning == nil {
+            persist()
+        }
         recalculateReview()
     }
 
@@ -114,9 +120,20 @@ final class ShelfViewModel: ObservableObject {
     }
 
     func renameSelectedShelf(_ title: String) {
-        selectedSession.title = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? selectedSession.title : title
+        _ = renameSelectedShelfTitle(title)
+    }
+
+    @discardableResult
+    func renameSelectedShelfTitle(_ title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return selectedSession.title
+        }
+
+        selectedSession.title = trimmed
         selectedSession.updatedAt = Date()
         persist()
+        return selectedSession.title
     }
 
     func select(sessionID: UUID) {
@@ -179,120 +196,152 @@ final class ShelfViewModel: ObservableObject {
     }
 
     func performUndo() {
-        Task {
-            do {
-                if let mutation = try await actions.undoLastBatch() {
-                    apply(mutation)
+        runAction(
+            operation: { actions in
+                try await actions.undoLastBatch()
+            },
+            applyResult: { mutation in
+                if let mutation {
+                    self.apply(mutation)
                 }
-            } catch {
-                errorMessage = error.localizedDescription
             }
-            canUndo = await actions.canUndo
-        }
+        )
     }
 
     func previewMove(destination: URL, mode: FileOperationMode) {
-        let preview = actions.previewMove(items: selectedItems, to: destination, mode: mode)
-        presentPreview(preview) { [weak self] in
+        let items = selectedItems
+        let preview = actions.previewMove(items: items, to: destination, mode: mode)
+        presentPreview(preview) { [weak self, items, destination, mode] in
             guard let self else { return }
-            let items = selectedItems
-            runAction {
-                let mutation = try await self.actions.executeMove(items: items, to: destination, mode: mode)
-                self.remember(destination: destination)
-                self.apply(mutation)
-            }
+            runAction(
+                operation: { actions in
+                    try await actions.executeMove(items: items, to: destination, mode: mode)
+                },
+                applyResult: { mutation in
+                    self.remember(destination: destination)
+                    self.apply(mutation)
+                }
+            )
         }
     }
 
     func previewArchive(root: URL) {
-        let preview = actions.previewArchive(items: selectedItems, root: root, strategy: archiveStrategy)
-        presentPreview(preview) { [weak self] in
+        let items = selectedItems
+        let strategy = archiveStrategy
+        let preview = actions.previewArchive(items: items, root: root, strategy: strategy)
+        presentPreview(preview) { [weak self, items, root, strategy] in
             guard let self else { return }
-            let items = selectedItems
-            let strategy = archiveStrategy
-            runAction {
-                let mutation = try await self.actions.executeArchive(items: items, root: root, strategy: strategy)
-                self.remember(destination: root)
-                self.apply(mutation)
-            }
+            runAction(
+                operation: { actions in
+                    try await actions.executeArchive(items: items, root: root, strategy: strategy)
+                },
+                applyResult: { mutation in
+                    self.remember(destination: root)
+                    self.apply(mutation)
+                }
+            )
         }
     }
 
     func previewRename() {
-        let preview = actions.previewRename(items: selectedItems, pattern: renamePattern)
-        presentPreview(preview) { [weak self] in
+        let items = selectedItems
+        let pattern = renamePattern
+        let preview = actions.previewRename(items: items, pattern: pattern)
+        presentPreview(preview) { [weak self, items, pattern] in
             guard let self else { return }
-            let items = selectedItems
-            let pattern = renamePattern
-            runAction {
-                let mutation = try await self.actions.executeRename(items: items, pattern: pattern)
-                self.apply(mutation)
-            }
+            runAction(
+                operation: { actions in
+                    try await actions.executeRename(items: items, pattern: pattern)
+                },
+                applyResult: { mutation in
+                    self.apply(mutation)
+                }
+            )
         }
     }
 
     func previewMetadata() {
-        let preview = actions.previewMetadata(items: selectedItems, request: metadataRequest)
-        presentPreview(preview) { [weak self] in
+        let items = selectedItems
+        let request = metadataRequest
+        let preview = actions.previewMetadata(items: items, request: request)
+        presentPreview(preview) { [weak self, items, request] in
             guard let self else { return }
-            let items = selectedItems
-            let request = metadataRequest
-            runAction {
-                let mutation = try await self.actions.executeMetadata(items: items, request: request)
-                self.apply(mutation)
-            }
+            runAction(
+                operation: { actions in
+                    try await actions.executeMetadata(items: items, request: request)
+                },
+                applyResult: { mutation in
+                    self.apply(mutation)
+                }
+            )
         }
     }
 
     func previewSafeDelete() {
-        let preview = actions.previewSafeDelete(items: selectedItems)
-        presentPreview(preview) { [weak self] in
+        let items = selectedItems
+        let preview = actions.previewSafeDelete(items: items)
+        presentPreview(preview) { [weak self, items] in
             guard let self else { return }
-            let items = selectedItems
-            runAction {
-                let mutation = try await self.actions.executeSafeDelete(items: items)
-                self.apply(mutation)
-            }
+            runAction(
+                operation: { actions in
+                    try await actions.executeSafeDelete(items: items)
+                },
+                applyResult: { mutation in
+                    self.apply(mutation)
+                }
+            )
         }
     }
 
     func previewZip(destination: URL, baseName: String) {
-        let preview = actions.previewZip(items: selectedItems, destinationDirectory: destination, baseName: baseName)
-        presentPreview(preview) { [weak self] in
+        let items = selectedItems
+        let preview = actions.previewZip(items: items, destinationDirectory: destination, baseName: baseName)
+        presentPreview(preview) { [weak self, items, destination, baseName] in
             guard let self else { return }
-            let items = selectedItems
-            runAction {
-                let mutation = try await self.actions.executeZip(items: items, destinationDirectory: destination, baseName: baseName)
-                self.remember(destination: destination)
-                self.apply(mutation)
-            }
+            runAction(
+                operation: { actions in
+                    try await actions.executeZip(items: items, destinationDirectory: destination, baseName: baseName)
+                },
+                applyResult: { mutation in
+                    self.remember(destination: destination)
+                    self.apply(mutation)
+                }
+            )
         }
     }
 
     func previewImageTransform(destination: URL) {
-        let preview = actions.previewImageTransform(items: selectedItems, plan: imageTransformPlan, destinationDirectory: destination)
-        presentPreview(preview) { [weak self] in
+        let items = selectedItems
+        let plan = imageTransformPlan
+        let preview = actions.previewImageTransform(items: items, plan: plan, destinationDirectory: destination)
+        presentPreview(preview) { [weak self, items, plan, destination] in
             guard let self else { return }
-            let items = selectedItems
-            let plan = imageTransformPlan
-            runAction {
-                let mutation = try await self.actions.executeImageTransform(items: items, plan: plan, destinationDirectory: destination)
-                self.remember(destination: destination)
-                self.apply(mutation)
-            }
+            runAction(
+                operation: { actions in
+                    try await actions.executeImageTransform(items: items, plan: plan, destinationDirectory: destination)
+                },
+                applyResult: { mutation in
+                    self.remember(destination: destination)
+                    self.apply(mutation)
+                }
+            )
         }
     }
 
     func previewCreatePDF(destination: URL, baseName: String) {
-        let preview = actions.previewPDF(from: selectedItems, destinationDirectory: destination, baseName: baseName)
-        presentPreview(preview) { [weak self] in
+        let items = selectedItems
+        let preview = actions.previewPDF(from: items, destinationDirectory: destination, baseName: baseName)
+        presentPreview(preview) { [weak self, items, destination, baseName] in
             guard let self else { return }
-            let items = selectedItems
-            runAction {
-                let mutation = try await self.actions.executePDF(from: items, destinationDirectory: destination, baseName: baseName)
-                self.remember(destination: destination)
-                self.apply(mutation)
-            }
+            runAction(
+                operation: { actions in
+                    try await actions.executePDF(from: items, destinationDirectory: destination, baseName: baseName)
+                },
+                applyResult: { mutation in
+                    self.remember(destination: destination)
+                    self.apply(mutation)
+                }
+            )
         }
     }
 
@@ -311,11 +360,19 @@ final class ShelfViewModel: ObservableObject {
         pendingPreview = PendingPreview(preview: preview, onConfirm: onConfirm)
     }
 
-    private func runAction(_ block: @escaping @MainActor () async throws -> Void) {
+    private func runAction<Result: Sendable>(
+        operation: @escaping @Sendable (FileActionService) async throws -> Result,
+        applyResult: @escaping (Result) -> Void
+    ) {
         isBusy = true
-        Task {
+        let actions = self.actions
+        Task { [weak self] in
+            guard let self else { return }
             do {
-                try await block()
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try await operation(actions)
+                }.value
+                applyResult(result)
             } catch {
                 errorMessage = error.localizedDescription
             }

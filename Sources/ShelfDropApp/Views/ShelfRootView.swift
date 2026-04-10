@@ -115,14 +115,12 @@ private struct SessionsSidebar: View {
             VStack(alignment: .leading, spacing: 8) {
                 Divider()
                 TextField("Shelf title", text: Binding(
-                    get: {
-                        renameShelfTitle.isEmpty ? viewModel.selectedSession.title : renameShelfTitle
-                    },
+                    get: { renameShelfTitle },
                     set: { renameShelfTitle = $0 }
                 ))
                 .textFieldStyle(.roundedBorder)
                 .onSubmit {
-                    viewModel.renameSelectedShelf(renameShelfTitle)
+                    renameShelfTitle = viewModel.renameSelectedShelfTitle(renameShelfTitle)
                 }
 
                 Button {
@@ -315,7 +313,7 @@ private struct ShelfItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ThumbnailView(url: item.url)
+            ThumbnailView(url: item.url, size: CGSize(width: 48, height: 48))
                 .frame(width: 48, height: 48)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
 
@@ -441,7 +439,7 @@ private struct InspectorPanel: View {
         Group {
             if let item = viewModel.selectedItems.first {
                 VStack(alignment: .center, spacing: 12) {
-                    ThumbnailView(url: item.url)
+                    ThumbnailView(url: item.url, size: CGSize(width: 360, height: 240))
                         .frame(height: 160)
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 12))

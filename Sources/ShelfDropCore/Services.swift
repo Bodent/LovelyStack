@@ -37,6 +37,16 @@ private func withAccessibleURL<T>(for item: ShelfItem, _ body: (URL) throws -> T
     try ScopedFileAccess.withResolvedURL(url: item.url, bookmarkData: item.bookmarkData, body)
 }
 
+public struct ShelfStoreLoadResult {
+    public let snapshot: AppSnapshot
+    public let warning: String?
+
+    public init(snapshot: AppSnapshot, warning: String? = nil) {
+        self.snapshot = snapshot
+        self.warning = warning
+    }
+}
+
 public final class ShelfStore {
     private let snapshotURL: URL
     private let fileManager: FileManager
@@ -46,18 +56,21 @@ public final class ShelfStore {
         self.snapshotURL = baseDirectory.appendingPathComponent("state.json")
     }
 
-    public func load() -> AppSnapshot {
+    public func load() -> ShelfStoreLoadResult {
         guard fileManager.fileExists(atPath: snapshotURL.path) else {
-            return AppSnapshot(sessions: [ShelfSession()], recentDestinations: [])
+            return ShelfStoreLoadResult(snapshot: AppSnapshot(sessions: [ShelfSession()], recentDestinations: []))
         }
 
         do {
             let data = try Data(contentsOf: snapshotURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            return try decoder.decode(AppSnapshot.self, from: data)
+            return ShelfStoreLoadResult(snapshot: try decoder.decode(AppSnapshot.self, from: data))
         } catch {
-            return AppSnapshot(sessions: [ShelfSession()], recentDestinations: [])
+            return ShelfStoreLoadResult(
+                snapshot: AppSnapshot(sessions: [ShelfSession()], recentDestinations: []),
+                warning: "Could not decode saved shelf state: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -242,9 +255,14 @@ public final class DuplicateDetectionService {
 }
 
 public final class FilePreflightService {
+    private let fileManager: FileManager
     private let duplicateService: DuplicateDetectionService
 
-    public init(duplicateService: DuplicateDetectionService = DuplicateDetectionService()) {
+    public init(
+        fileManager: FileManager = .default,
+        duplicateService: DuplicateDetectionService = DuplicateDetectionService()
+    ) {
+        self.fileManager = fileManager
         self.duplicateService = duplicateService
     }
 
@@ -267,7 +285,7 @@ public final class FilePreflightService {
             if item.isExternalVolume {
                 issues.append(.init(itemID: item.id, kind: .externalVolume, severity: .warning, message: "\(item.displayName) lives on an external volume. Keep the disk mounted during the action."))
             }
-            if let destination = plannedDestinations[item.id], destination != item.url, FileManager.default.fileExists(atPath: destination.path) {
+            if let destination = plannedDestinations[item.id], destination != item.url, fileManager.fileExists(atPath: destination.path) {
                 issues.append(.init(itemID: item.id, kind: .destinationConflict, severity: .error, message: "Destination already exists for \(item.displayName)."))
             }
         }
@@ -322,7 +340,7 @@ public final class FinderMetadataService {
     private func finderComment(for url: URL) -> String? {
         let script = """
         tell application "Finder"
-            set theItem to POSIX file "\(escapedForAppleScript(url.path))" as alias
+            set theItem to POSIX file \(appleScriptStringLiteral(url.path)) as alias
             return comment of theItem
         end tell
         """
@@ -332,7 +350,7 @@ public final class FinderMetadataService {
     private func finderLabel(for url: URL) -> FinderLabelColor {
         let script = """
         tell application "Finder"
-            set theItem to POSIX file "\(escapedForAppleScript(url.path))" as alias
+            set theItem to POSIX file \(appleScriptStringLiteral(url.path)) as alias
             return label index of theItem
         end tell
         """
@@ -343,8 +361,8 @@ public final class FinderMetadataService {
     private func setFinderComment(_ comment: String, for url: URL) throws {
         let script = """
         tell application "Finder"
-            set theItem to POSIX file "\(escapedForAppleScript(url.path))" as alias
-            set comment of theItem to "\(escapedForAppleScript(comment))"
+            set theItem to POSIX file \(appleScriptStringLiteral(url.path)) as alias
+            set comment of theItem to \(appleScriptStringLiteral(comment))
         end tell
         """
         try runAppleScript(script)
@@ -353,7 +371,7 @@ public final class FinderMetadataService {
     private func setFinderLabel(_ label: FinderLabelColor, for url: URL) throws {
         let script = """
         tell application "Finder"
-            set theItem to POSIX file "\(escapedForAppleScript(url.path))" as alias
+            set theItem to POSIX file \(appleScriptStringLiteral(url.path)) as alias
             set label index of theItem to \(label.finderIndex)
         end tell
         """
@@ -375,10 +393,20 @@ public final class FinderMetadataService {
         }
     }
 
-    private func escapedForAppleScript(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+    func appleScriptStringLiteral(_ value: String) -> String {
+        let normalized = value
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let segments = normalized
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { segment in
+                let escaped = String(segment)
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "\"", with: "\\\"")
+                return "\"\(escaped)\""
+            }
+
+        return segments.isEmpty ? "\"\"" : segments.joined(separator: " & linefeed & ")
     }
 }
 
@@ -415,21 +443,17 @@ public final class ImageTransformService {
                     throw NSError(domain: "ShelfDrop.ImageTransform", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create \(outputURL.lastPathComponent)."])
                 }
 
-                var properties: [CFString: Any] = [:]
+                var properties = [CFString: Any]()
+                if !plan.stripMetadata,
+                   let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+                    properties.merge(metadata) { current, _ in current }
+                }
                 if plan.outputFormat == .jpeg {
                     properties[kCGImageDestinationLossyCompressionQuality] = plan.compressionQuality
                 }
                 CGImageDestinationAddImage(destination, image, properties as CFDictionary)
                 guard CGImageDestinationFinalize(destination) else {
                     throw NSError(domain: "ShelfDrop.ImageTransform", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to write \(outputURL.lastPathComponent)."])
-                }
-
-                if !plan.stripMetadata, let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) {
-                    let destinationWithMetadata = CGImageDestinationCreateWithURL(outputURL as CFURL, plan.outputFormat.utiIdentifier, 1, nil)
-                    if let destinationWithMetadata {
-                        CGImageDestinationAddImage(destinationWithMetadata, image, metadata)
-                        _ = CGImageDestinationFinalize(destinationWithMetadata)
-                    }
                 }
 
                 return outputURL
@@ -480,6 +504,7 @@ extension FinderMetadataService: @unchecked Sendable {}
 extension ImageTransformService: @unchecked Sendable {}
 
 public actor FileActionService {
+    private let maxUndoBatches = 20
     nonisolated(unsafe) private let fileManager: FileManager
     nonisolated private let preflightService: FilePreflightService
     nonisolated private let metadataService: FinderMetadataService
@@ -510,105 +535,78 @@ public actor FileActionService {
     }
 
     public nonisolated func previewMove(items: [ShelfItem], to destination: URL, mode: FileOperationMode) -> BatchPreview {
-        let destinations = Dictionary(uniqueKeysWithValues: items.map { item in
-            (item.id, destination.appendingPathComponent(item.url.lastPathComponent))
-        })
-        let preflight = preflightService.review(items: items, plannedDestinations: destinations)
-        return BatchPreview(
+        makeRelocationPreview(
             title: mode == .move ? "Move Preview" : "Copy Preview",
-            changes: items.map {
-                PlannedChange(itemID: $0.id, sourceURL: $0.url, destinationURL: destinations[$0.id], summary: "\(mode == .move ? "Move" : "Copy") \($0.displayName)")
-            },
-            issues: preflight.issues,
-            duplicateGroups: preflight.duplicateGroups
+            items: items,
+            destination: { destination.appendingPathComponent($0.url.lastPathComponent) },
+            summary: { item, _ in "\(mode == .move ? "Move" : "Copy") \(item.displayName)" }
         )
     }
 
     public func executeMove(items: [ShelfItem], to destination: URL, mode: FileOperationMode) throws -> BatchMutation {
         try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
-        var mutation = BatchMutation(title: mode == .move ? "Moved files" : "Copied files")
-        var undoSteps = [UndoStep]()
-
-        for item in items {
-            let output = destination.appendingPathComponent(item.url.lastPathComponent)
-            guard !fileManager.fileExists(atPath: output.path) else {
-                throw NSError(domain: "ShelfDrop.Move", code: 1, userInfo: [NSLocalizedDescriptionKey: "Destination already exists for \(item.displayName)."])
-            }
-            let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
-                if mode == .move {
-                    try fileManager.moveItem(at: sourceURL, to: output)
-                    return .move(from: sourceURL, to: output)
-                } else {
-                    try fileManager.copyItem(at: sourceURL, to: output)
-                    return .removeCreated(output)
-                }
-            }
-            if mode == .move {
-                mutation.updatedItemLocations[item.id] = output
-            } else {
-                mutation.createdURLs.append(output)
-            }
-            undoSteps.append(step)
-        }
-
-        undoBatches.append(.init(title: mutation.title, steps: undoSteps))
-        return mutation
+        return try executeRelocation(
+            title: mode == .move ? "Moved files" : "Copied files",
+            items: items,
+            destination: { destination.appendingPathComponent($0.url.lastPathComponent) },
+            createParentDirectories: false,
+            conflictError: { item, _ in
+                NSError(
+                    domain: "ShelfDrop.Move",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Destination already exists for \(item.displayName)."]
+                )
+            },
+            operation: mode == .move ? .move : .copy
+        )
     }
 
     public nonisolated func previewArchive(items: [ShelfItem], root: URL, strategy: ArchiveStrategy) -> BatchPreview {
-        let destinations = Dictionary(uniqueKeysWithValues: items.map { item in
-            (item.id, archiveDestination(for: item, root: root, strategy: strategy))
-        })
-        let preflight = preflightService.review(items: items, plannedDestinations: destinations)
-        return BatchPreview(
+        makeRelocationPreview(
             title: "Archive Preview",
-            changes: items.map {
-                PlannedChange(itemID: $0.id, sourceURL: $0.url, destinationURL: destinations[$0.id], summary: "Archive \($0.displayName)")
-            },
-            issues: preflight.issues,
-            duplicateGroups: preflight.duplicateGroups
+            items: items,
+            destination: { archiveDestination(for: $0, root: root, strategy: strategy) },
+            summary: { item, _ in "Archive \(item.displayName)" }
         )
     }
 
     public func executeArchive(items: [ShelfItem], root: URL, strategy: ArchiveStrategy) throws -> BatchMutation {
-        var mutation = BatchMutation(title: "Archived files")
-        var undoSteps = [UndoStep]()
-
-        for item in items {
-            let output = archiveDestination(for: item, root: root, strategy: strategy)
-            try fileManager.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
-            guard !fileManager.fileExists(atPath: output.path) else {
-                throw NSError(domain: "ShelfDrop.Archive", code: 1, userInfo: [NSLocalizedDescriptionKey: "Archive destination already exists for \(item.displayName)."])
-            }
-            let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
-                try fileManager.moveItem(at: sourceURL, to: output)
-                return .move(from: sourceURL, to: output)
-            }
-            mutation.updatedItemLocations[item.id] = output
-            undoSteps.append(step)
-        }
-
-        undoBatches.append(.init(title: mutation.title, steps: undoSteps))
-        return mutation
+        return try executeRelocation(
+            title: "Archived files",
+            items: items,
+            destination: { archiveDestination(for: $0, root: root, strategy: strategy) },
+            createParentDirectories: true,
+            conflictError: { item, _ in
+                NSError(
+                    domain: "ShelfDrop.Archive",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Archive destination already exists for \(item.displayName)."]
+                )
+            },
+            operation: .move
+        )
     }
 
     public nonisolated func previewRename(items: [ShelfItem], pattern: RenamePattern) -> BatchPreview {
         let previews = RenamePlanner.previews(for: items, pattern: pattern)
-        let preflight = preflightService.review(items: items, plannedDestinations: Dictionary(uniqueKeysWithValues: previews.map { ($0.itemID, $0.destinationURL) }))
-        return BatchPreview(
+        let validationIssues = validationIssues(for: items)
+        let plannedDestinations = validationIssues.isEmpty ? makeDestinationMap(for: previews, id: \.itemID, destination: \.destinationURL) : [:]
+        return buildPreview(
             title: "Rename Preview",
             changes: previews.map {
                 PlannedChange(itemID: $0.itemID, sourceURL: $0.sourceURL, destinationURL: $0.destinationURL, summary: "Rename to \($0.newFilename)")
             },
-            issues: preflight.issues,
-            duplicateGroups: preflight.duplicateGroups
+            reviewItems: items,
+            plannedDestinations: plannedDestinations,
+            extraIssues: validationIssues
         )
     }
 
     public func executeRename(items: [ShelfItem], pattern: RenamePattern) throws -> BatchMutation {
+        try ensureUniqueItemIDs(in: items)
         let previews = RenamePlanner.previews(for: items, pattern: pattern)
-        let itemsByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        var mutation = BatchMutation(title: "Renamed files")
+        let itemsByID = makeItemMap(for: items)
+        var mutation = BatchMutation(title: "Renamed files", refreshedItemIDs: Set(items.map(\.id)))
         var undoSteps = [UndoStep]()
 
         for preview in previews {
@@ -625,13 +623,12 @@ public actor FileActionService {
             undoSteps.append(step)
         }
 
-        undoBatches.append(.init(title: mutation.title, steps: undoSteps))
+        recordUndoBatch(title: mutation.title, steps: undoSteps)
         return mutation
     }
 
     public nonisolated func previewMetadata(items: [ShelfItem], request: MetadataEditRequest) -> BatchPreview {
-        let preflight = preflightService.review(items: items)
-        return BatchPreview(
+        buildPreview(
             title: "Metadata Preview",
             changes: items.map {
                 PlannedChange(
@@ -641,12 +638,12 @@ public actor FileActionService {
                     summary: "Apply \(request.label.displayName) label, \(request.tags.count) tag(s), and Finder comment"
                 )
             },
-            issues: preflight.issues,
-            duplicateGroups: preflight.duplicateGroups
+            reviewItems: items
         )
     }
 
     public func executeMetadata(items: [ShelfItem], request: MetadataEditRequest) throws -> BatchMutation {
+        try ensureUniqueItemIDs(in: items)
         var undoSteps = [UndoStep]()
         for item in items {
             let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
@@ -656,26 +653,28 @@ public actor FileActionService {
             }
             undoSteps.append(step)
         }
-        undoBatches.append(.init(title: "Updated metadata", steps: undoSteps))
-        return BatchMutation(title: "Updated metadata")
+        recordUndoBatch(title: "Updated metadata", steps: undoSteps)
+        return BatchMutation(title: "Updated metadata", refreshedItemIDs: Set(items.map(\.id)))
     }
 
     public nonisolated func previewSafeDelete(items: [ShelfItem]) -> BatchPreview {
-        let preflight = preflightService.review(items: items)
-        return BatchPreview(
+        buildPreview(
             title: "Safe Delete Preview",
             changes: items.map {
                 let trashURL = trashDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent($0.url.lastPathComponent)
                 return PlannedChange(itemID: $0.id, sourceURL: $0.url, destinationURL: trashURL, summary: "Move \($0.displayName) into ShelfDrop recovery trash")
             },
-            issues: preflight.issues,
-            duplicateGroups: preflight.duplicateGroups
+            reviewItems: items
         )
     }
 
     public func executeSafeDelete(items: [ShelfItem]) throws -> BatchMutation {
+        try ensureUniqueItemIDs(in: items)
         try fileManager.createDirectory(at: trashDirectory, withIntermediateDirectories: true)
-        var mutation = BatchMutation(title: "Safely deleted files")
+        var mutation = BatchMutation(
+            title: "Safely deleted files",
+            refreshedItemIDs: Set(items.map(\.id))
+        )
         var undoSteps = [UndoStep]()
 
         for item in items {
@@ -690,26 +689,26 @@ public actor FileActionService {
             undoSteps.append(step)
         }
 
-        undoBatches.append(.init(title: mutation.title, steps: undoSteps))
+        recordUndoBatch(title: mutation.title, steps: undoSteps)
         return mutation
     }
 
     public nonisolated func previewZip(items: [ShelfItem], destinationDirectory: URL, baseName: String) -> BatchPreview {
         let outputURL = destinationDirectory.appendingPathComponent("\(baseName).zip")
-        let preflight = preflightService.review(items: items, plannedDestinations: [:])
-        var issues = preflight.issues
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            issues.append(.init(itemID: nil, kind: .destinationConflict, severity: .error, message: "Destination already exists for \(outputURL.lastPathComponent)."))
+        var issues = [PreflightIssue]()
+        if fileManager.fileExists(atPath: outputURL.path) {
+            issues.append(destinationConflictIssue(for: outputURL))
         }
-        return BatchPreview(
+        return buildPreview(
             title: "Zip Preview",
             changes: [PlannedChange(itemID: nil, sourceURL: destinationDirectory, destinationURL: outputURL, summary: "Create \(outputURL.lastPathComponent)")],
-            issues: issues,
-            duplicateGroups: preflight.duplicateGroups
+            reviewItems: items,
+            extraIssues: issues
         )
     }
 
     public func executeZip(items: [ShelfItem], destinationDirectory: URL, baseName: String) throws -> BatchMutation {
+        try ensureUniqueItemIDs(in: items)
         try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
         let outputURL = destinationDirectory.appendingPathComponent("\(baseName).zip")
         guard !fileManager.fileExists(atPath: outputURL.path) else {
@@ -735,53 +734,64 @@ public actor FileActionService {
             throw NSError(domain: "ShelfDrop.Zip", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "ditto failed to create the ZIP archive."])
         }
 
-        undoBatches.append(.init(title: "Created ZIP", steps: [.removeCreated(outputURL)]))
-        return BatchMutation(title: "Created ZIP", createdURLs: [outputURL])
+        return finishCreatedFilesMutation(title: "Created ZIP", createdURLs: [outputURL])
     }
 
     public nonisolated func previewImageTransform(items: [ShelfItem], plan: ImageTransformPlan, destinationDirectory: URL) -> BatchPreview {
         let imageItems = items.filter(\.isImage)
+        let skippedItems = items.filter { !$0.isImage }
         let outputs = imageItems.map {
             destinationDirectory.appendingPathComponent("\($0.url.deletingPathExtension().lastPathComponent).\(plan.outputFormat.fileExtension)")
         }
-        let preflight = preflightService.review(items: imageItems, plannedDestinations: Dictionary(uniqueKeysWithValues: zip(imageItems.map(\.id), outputs)))
-        return BatchPreview(
+        let validationIssues = validationIssues(for: imageItems)
+        let plannedDestinations = validationIssues.isEmpty ? makeDestinationMap(for: imageItems, destination: {
+            destinationDirectory.appendingPathComponent("\($0.url.deletingPathExtension().lastPathComponent).\(plan.outputFormat.fileExtension)")
+        }) : [:]
+        let skippedIssues = skippedItems.map {
+            PreflightIssue(
+                itemID: $0.id,
+                kind: .unsupportedSelection,
+                severity: .warning,
+                message: "\($0.displayName) is not an image and will be skipped."
+            )
+        }
+        return buildPreview(
             title: "Image Transform Preview",
             changes: zip(imageItems, outputs).map {
                 PlannedChange(itemID: $0.0.id, sourceURL: $0.0.url, destinationURL: $0.1, summary: "Create \($0.1.lastPathComponent)")
             },
-            issues: preflight.issues,
-            duplicateGroups: preflight.duplicateGroups
+            reviewItems: imageItems,
+            plannedDestinations: plannedDestinations,
+            extraIssues: skippedIssues + validationIssues
         )
     }
 
     public func executeImageTransform(items: [ShelfItem], plan: ImageTransformPlan, destinationDirectory: URL) throws -> BatchMutation {
+        try ensureUniqueItemIDs(in: items)
         let outputs = try imageService.transform(items: items, plan: plan, destinationDirectory: destinationDirectory)
-        undoBatches.append(.init(title: "Converted images", steps: outputs.map(UndoStep.removeCreated)))
-        return BatchMutation(title: "Converted images", createdURLs: outputs)
+        return finishCreatedFilesMutation(title: "Converted images", createdURLs: outputs)
     }
 
     public nonisolated func previewPDF(from items: [ShelfItem], destinationDirectory: URL, baseName: String) -> BatchPreview {
         let outputURL = destinationDirectory.appendingPathComponent("\(baseName).pdf")
-        let preflight = preflightService.review(items: items)
-        var issues = preflight.issues
-        if FileManager.default.fileExists(atPath: outputURL.path) {
-            issues.append(.init(itemID: nil, kind: .destinationConflict, severity: .error, message: "Destination already exists for \(outputURL.lastPathComponent)."))
+        var issues = [PreflightIssue]()
+        if fileManager.fileExists(atPath: outputURL.path) {
+            issues.append(destinationConflictIssue(for: outputURL))
         }
-        return BatchPreview(
+        return buildPreview(
             title: "Create PDF Preview",
             changes: [PlannedChange(itemID: nil, sourceURL: destinationDirectory, destinationURL: outputURL, summary: "Create \(outputURL.lastPathComponent) from \(items.count) image(s)")],
-            issues: issues,
-            duplicateGroups: preflight.duplicateGroups
+            reviewItems: items,
+            extraIssues: issues
         )
     }
 
     public func executePDF(from items: [ShelfItem], destinationDirectory: URL, baseName: String) throws -> BatchMutation {
+        try ensureUniqueItemIDs(in: items)
         try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
         let outputURL = destinationDirectory.appendingPathComponent("\(baseName).pdf")
         _ = try imageService.createPDF(from: items, destinationURL: outputURL)
-        undoBatches.append(.init(title: "Created PDF", steps: [.removeCreated(outputURL)]))
-        return BatchMutation(title: "Created PDF", createdURLs: [outputURL])
+        return finishCreatedFilesMutation(title: "Created PDF", createdURLs: [outputURL])
     }
 
     public func undoLastBatch() throws -> BatchMutation? {
@@ -798,6 +808,8 @@ public actor FileActionService {
                 if fileManager.fileExists(atPath: trashURL.path) {
                     try fileManager.createDirectory(at: original.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try fileManager.moveItem(at: trashURL, to: original)
+                    try removeDirectoryIfEmpty(at: trashURL.deletingLastPathComponent())
+                    try removeDirectoryIfEmpty(at: trashDirectory)
                     mutation.restoredURLs.append(original)
                 }
             case let .removeCreated(url):
@@ -830,6 +842,186 @@ public actor FileActionService {
             folderName = item.kindDescription.replacingOccurrences(of: "/", with: "-")
         }
         return root.appendingPathComponent(folderName, isDirectory: true).appendingPathComponent(item.url.lastPathComponent)
+    }
+
+    private func recordUndoBatch(title: String, steps: [UndoStep]) {
+        undoBatches.append(.init(title: title, steps: steps))
+        if undoBatches.count > maxUndoBatches {
+            undoBatches.removeFirst(undoBatches.count - maxUndoBatches)
+        }
+    }
+
+    private func finishCreatedFilesMutation(title: String, createdURLs: [URL]) -> BatchMutation {
+        recordUndoBatch(title: title, steps: createdURLs.map(UndoStep.removeCreated))
+        return BatchMutation(title: title, createdURLs: createdURLs)
+    }
+
+    private func removeDirectoryIfEmpty(at url: URL) throws {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        let contents = try fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+        if contents.isEmpty {
+            try fileManager.removeItem(at: url)
+        }
+    }
+
+    nonisolated private func buildPreview(
+        title: String,
+        changes: [PlannedChange],
+        reviewItems: [ShelfItem],
+        plannedDestinations: [UUID: URL] = [:],
+        extraIssues: [PreflightIssue] = []
+    ) -> BatchPreview {
+        let preflight = preflightService.review(items: reviewItems, plannedDestinations: plannedDestinations)
+        return BatchPreview(
+            title: title,
+            changes: changes,
+            issues: preflight.issues + extraIssues,
+            duplicateGroups: preflight.duplicateGroups
+        )
+    }
+
+    nonisolated private func makeRelocationPreview(
+        title: String,
+        items: [ShelfItem],
+        destination: (ShelfItem) -> URL,
+        summary: (ShelfItem, URL) -> String
+    ) -> BatchPreview {
+        let validationIssues = validationIssues(for: items)
+        let plannedDestinations = validationIssues.isEmpty ? makeDestinationMap(for: items, destination: destination) : [:]
+        let changes = items.map { item in
+            let outputURL = destination(item)
+            return PlannedChange(
+                itemID: item.id,
+                sourceURL: item.url,
+                destinationURL: outputURL,
+                summary: summary(item, outputURL)
+            )
+        }
+        return buildPreview(
+            title: title,
+            changes: changes,
+            reviewItems: items,
+            plannedDestinations: plannedDestinations,
+            extraIssues: validationIssues
+        )
+    }
+
+    private func executeRelocation(
+        title: String,
+        items: [ShelfItem],
+        destination: (ShelfItem) -> URL,
+        createParentDirectories: Bool,
+        conflictError: (ShelfItem, URL) -> NSError,
+        operation: RelocationOperation
+    ) throws -> BatchMutation {
+        try ensureUniqueItemIDs(in: items)
+        var mutation = BatchMutation(title: title, refreshedItemIDs: Set(items.map(\.id)))
+        var undoSteps = [UndoStep]()
+
+        for item in items {
+            let outputURL = destination(item)
+            if createParentDirectories {
+                try fileManager.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            }
+            guard !fileManager.fileExists(atPath: outputURL.path) else {
+                throw conflictError(item, outputURL)
+            }
+
+            let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
+                switch operation {
+                case .move:
+                    try fileManager.moveItem(at: sourceURL, to: outputURL)
+                    return .move(from: sourceURL, to: outputURL)
+                case .copy:
+                    try fileManager.copyItem(at: sourceURL, to: outputURL)
+                    return .removeCreated(outputURL)
+                }
+            }
+
+            switch operation {
+            case .move:
+                mutation.updatedItemLocations[item.id] = outputURL
+            case .copy:
+                mutation.createdURLs.append(outputURL)
+            }
+            undoSteps.append(step)
+        }
+
+        recordUndoBatch(title: mutation.title, steps: undoSteps)
+        return mutation
+    }
+
+    nonisolated private func destinationConflictIssue(for url: URL) -> PreflightIssue {
+        PreflightIssue(
+            itemID: nil,
+            kind: .destinationConflict,
+            severity: .error,
+            message: "Destination already exists for \(url.lastPathComponent)."
+        )
+    }
+
+    nonisolated private func validationIssues(for items: [ShelfItem]) -> [PreflightIssue] {
+        duplicateItemIDIssue(in: items).map { [$0] } ?? []
+    }
+
+    nonisolated private func duplicateItemIDIssue(in items: [ShelfItem]) -> PreflightIssue? {
+        let uniqueIDs = Set(items.map(\.id))
+        guard uniqueIDs.count != items.count else { return nil }
+        return PreflightIssue(
+            itemID: nil,
+            kind: .internalValidation,
+            severity: .error,
+            message: "Some selected shelf items share the same internal ID. Remove and re-add them before running this batch."
+        )
+    }
+
+    nonisolated private func ensureUniqueItemIDs(in items: [ShelfItem]) throws {
+        guard duplicateItemIDIssue(in: items) == nil else {
+            throw NSError(
+                domain: "ShelfDrop.Validation",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Some selected shelf items share the same internal ID. Remove and re-add them before running this batch."]
+            )
+        }
+    }
+
+    nonisolated private func makeDestinationMap(
+        for items: [ShelfItem],
+        destination: (ShelfItem) -> URL
+    ) -> [UUID: URL] {
+        var destinations = [UUID: URL]()
+        destinations.reserveCapacity(items.count)
+        for item in items {
+            destinations[item.id] = destination(item)
+        }
+        return destinations
+    }
+
+    nonisolated private func makeDestinationMap<Entry>(
+        for entries: [Entry],
+        id: KeyPath<Entry, UUID>,
+        destination: KeyPath<Entry, URL>
+    ) -> [UUID: URL] {
+        var destinations = [UUID: URL]()
+        destinations.reserveCapacity(entries.count)
+        for entry in entries {
+            destinations[entry[keyPath: id]] = entry[keyPath: destination]
+        }
+        return destinations
+    }
+
+    nonisolated private func makeItemMap(for items: [ShelfItem]) -> [UUID: ShelfItem] {
+        var itemsByID = [UUID: ShelfItem]()
+        itemsByID.reserveCapacity(items.count)
+        for item in items {
+            itemsByID[item.id] = item
+        }
+        return itemsByID
+    }
+
+    private enum RelocationOperation {
+        case move
+        case copy
     }
 }
 

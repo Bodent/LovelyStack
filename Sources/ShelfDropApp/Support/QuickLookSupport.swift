@@ -1,23 +1,105 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
+import ImageIO
+
+private func makeImageThumbnailData(at url: URL, size: CGSize) -> Data? {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+        return nil
+    }
+
+    let maxPixelSize = max(Int(size.width.rounded()), Int(size.height.rounded())) * 2
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: max(maxPixelSize, 64),
+    ]
+
+    guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+        return nil
+    }
+
+    let bitmap = NSBitmapImageRep(cgImage: thumbnail)
+    return bitmap.representation(using: .png, properties: [:])
+}
+
+@MainActor
+private enum ThumbnailRepository {
+    private static let cache = NSCache<NSString, NSImage>()
+
+    static func cacheKey(for url: URL, size: CGSize) -> String {
+        "\(url.path)#\(Int(size.width.rounded()))x\(Int(size.height.rounded()))"
+    }
+
+    static func cachedImage(for url: URL, size: CGSize) -> NSImage? {
+        cache.object(forKey: cacheKey(for: url, size: size) as NSString)
+    }
+
+    static func loadImage(
+        for url: URL,
+        size: CGSize,
+        completion: @escaping @MainActor (NSImage) -> Void
+    ) {
+        let key = cacheKey(for: url, size: size)
+        if let cached = cache.object(forKey: key as NSString) {
+            completion(cached)
+            return
+        }
+
+        guard isImageURL(url) else {
+            let image = fallbackIcon(for: url, size: size)
+            cache.setObject(image, forKey: key as NSString)
+            completion(image)
+            return
+        }
+
+        Task.detached(priority: .utility) {
+            let thumbnailData = makeImageThumbnailData(at: url, size: size)
+            await MainActor.run {
+                let image = thumbnailData.flatMap(NSImage.init(data:)) ?? fallbackIcon(for: url, size: size)
+                cache.setObject(image, forKey: key as NSString)
+                completion(image)
+            }
+        }
+    }
+
+    private static func isImageURL(_ url: URL) -> Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+        return type.conforms(to: .image)
+    }
+
+    private static func fallbackIcon(for url: URL, size: CGSize) -> NSImage {
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        icon.size = size
+        return icon
+    }
+}
 
 @MainActor
 final class ThumbnailProvider: ObservableObject {
     @Published var image: NSImage?
+    private var requestedKey: NSString?
 
     func load(for url: URL, size: CGSize = CGSize(width: 240, height: 180)) {
-        if let loadedImage = NSImage(contentsOf: url) {
-            image = loadedImage
-        } else {
-            let icon = NSWorkspace.shared.icon(forFile: url.path)
-            icon.size = size
-            image = icon
+        let key = ThumbnailRepository.cacheKey(for: url, size: size) as NSString
+        requestedKey = key
+
+        if let cached = ThumbnailRepository.cachedImage(for: url, size: size) {
+            image = cached
+            return
+        }
+
+        image = nil
+        ThumbnailRepository.loadImage(for: url, size: size) { [weak self] loadedImage in
+            guard let self, self.requestedKey == key else { return }
+            self.image = loadedImage
         }
     }
 }
 
 struct ThumbnailView: View {
     let url: URL
+    var size: CGSize = CGSize(width: 240, height: 180)
     @StateObject private var provider = ThumbnailProvider()
 
     var body: some View {
@@ -32,12 +114,13 @@ struct ThumbnailView: View {
                     .overlay(ProgressView())
             }
         }
-        .onAppear {
-            provider.load(for: url)
+        .task(id: cacheIdentity) {
+            provider.load(for: url, size: size)
         }
-        .onChange(of: url) {
-            provider.load(for: url)
-        }
+    }
+
+    private var cacheIdentity: String {
+        "\(url.path)#\(Int(size.width.rounded()))x\(Int(size.height.rounded()))"
     }
 }
 

@@ -38,7 +38,7 @@ public enum RenamePlanner {
                 .replacingOccurrences(of: "\\s+", with: pattern.separator.rawValue, options: .regularExpression)
                 .trimmingCharacters(in: CharacterSet(charactersIn: pattern.separator.rawValue).union(.whitespacesAndNewlines))
 
-            let transformed = applyCaseStyle(joined, style: pattern.caseStyle)
+            let transformed = applyCaseStyle(joined, style: pattern.caseStyle, separator: pattern.separator)
             let filename = item.fileExtension.isEmpty ? transformed : "\(transformed).\(item.fileExtension)"
             return RenamePreviewEntry(
                 itemID: item.id,
@@ -52,8 +52,8 @@ public enum RenamePlanner {
     private static func clean(baseName: String, using pattern: RenamePattern) -> String {
         var value = baseName
         for prefix in pattern.prefixesToRemove where !prefix.isEmpty {
-            if value.range(of: prefix, options: [.anchored, .caseInsensitive]) != nil {
-                value.removeFirst(prefix.count)
+            if let matchedRange = value.range(of: prefix, options: [.anchored, .caseInsensitive]) {
+                value.removeSubrange(matchedRange)
             }
         }
 
@@ -69,7 +69,7 @@ public enum RenamePlanner {
         return value.trimmingCharacters(in: CharacterSet(charactersIn: pattern.separator.rawValue).union(.whitespacesAndNewlines))
     }
 
-    private static func applyCaseStyle(_ value: String, style: RenameCaseStyle) -> String {
+    private static func applyCaseStyle(_ value: String, style: RenameCaseStyle, separator: RenameSeparator) -> String {
         switch style {
         case .keep: value
         case .lower: value.lowercased()
@@ -78,7 +78,7 @@ public enum RenamePlanner {
             value
                 .split(whereSeparator: { $0 == "-" || $0 == "_" || $0 == " " })
                 .map { $0.capitalized }
-                .joined(separator: "_")
+                .joined(separator: separator.rawValue)
         }
     }
 

@@ -71,6 +71,6 @@ struct ActionPreviewSheet: View {
         }
         .padding(24)
         .frame(width: 760, height: 580)
-        .background(Color.white)
+        .background(.regularMaterial)
     }
 }

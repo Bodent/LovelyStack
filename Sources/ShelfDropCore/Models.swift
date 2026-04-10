@@ -1,7 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
 
-public struct ShelfItem: Identifiable, Codable, Hashable {
+public struct ShelfItem: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var url: URL
     public var bookmarkData: Data?
@@ -71,7 +71,7 @@ public struct ShelfItem: Identifiable, Codable, Hashable {
     }
 }
 
-public struct ShelfSession: Identifiable, Codable, Hashable {
+public struct ShelfSession: Identifiable, Codable, Hashable, Sendable {
     public let id: UUID
     public var title: String
     public var createdAt: Date
@@ -160,7 +160,7 @@ public struct MetadataEditRequest: Codable, Hashable, Sendable {
     }
 }
 
-public enum RenameCaseStyle: String, Codable, CaseIterable, Identifiable {
+public enum RenameCaseStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     case keep
     case lower
     case upper
@@ -169,7 +169,7 @@ public enum RenameCaseStyle: String, Codable, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
-public enum RenameSeparator: String, Codable, CaseIterable, Identifiable {
+public enum RenameSeparator: String, Codable, CaseIterable, Identifiable, Sendable {
     case space = " "
     case dash = "-"
     case underscore = "_"
@@ -185,7 +185,7 @@ public enum RenameSeparator: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public enum RenameDateSource: String, Codable, CaseIterable, Identifiable {
+public enum RenameDateSource: String, Codable, CaseIterable, Identifiable, Sendable {
     case none
     case created
     case modified
@@ -193,7 +193,7 @@ public enum RenameDateSource: String, Codable, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
-public struct RenamePattern: Codable, Hashable {
+public struct RenamePattern: Codable, Hashable, Sendable {
     public var prefixesToRemove: [String]
     public var textToRemove: [String]
     public var separator: RenameSeparator
@@ -227,7 +227,7 @@ public struct RenamePattern: Codable, Hashable {
     }
 }
 
-public enum ArchiveStrategy: String, Codable, CaseIterable, Identifiable {
+public enum ArchiveStrategy: String, Codable, CaseIterable, Identifiable, Sendable {
     case createdMonth
     case modifiedMonth
     case fileType
@@ -250,7 +250,7 @@ public enum FileOperationMode: String, Codable, CaseIterable, Identifiable, Send
     public var id: String { rawValue }
 }
 
-public enum ImageOutputFormat: String, Codable, CaseIterable, Identifiable {
+public enum ImageOutputFormat: String, Codable, CaseIterable, Identifiable, Sendable {
     case jpeg
     case png
     case tiff
@@ -274,7 +274,7 @@ public enum ImageOutputFormat: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public struct ImageTransformPlan: Codable, Hashable {
+public struct ImageTransformPlan: Codable, Hashable, Sendable {
     public var outputFormat: ImageOutputFormat
     public var maxPixelSize: Int?
     public var compressionQuality: Double
@@ -293,23 +293,25 @@ public struct ImageTransformPlan: Codable, Hashable {
     }
 }
 
-public enum PreflightSeverity: String, Hashable, Codable {
+public enum PreflightSeverity: String, Hashable, Codable, Sendable {
     case warning
     case error
 }
 
-public enum PreflightIssueKind: String, Hashable, Codable {
+public enum PreflightIssueKind: String, Hashable, Codable, Sendable {
     case duplicate
     case duplicateCheckUnavailable
     case destinationConflict
+    case internalValidation
     case lockedFile
     case unreachable
     case alias
     case iCloudPlaceholder
     case externalVolume
+    case unsupportedSelection
 }
 
-public struct PreflightIssue: Identifiable, Hashable, Codable {
+public struct PreflightIssue: Identifiable, Hashable, Codable, Sendable {
     public let id: UUID
     public let itemID: UUID?
     public let kind: PreflightIssueKind
@@ -331,7 +333,7 @@ public struct PreflightIssue: Identifiable, Hashable, Codable {
     }
 }
 
-public struct DuplicateGroup: Identifiable, Hashable, Codable {
+public struct DuplicateGroup: Identifiable, Hashable, Codable, Sendable {
     public let id: String
     public let itemIDs: [UUID]
     public let byteSize: Int64
@@ -343,7 +345,7 @@ public struct DuplicateGroup: Identifiable, Hashable, Codable {
     }
 }
 
-public struct PlannedChange: Identifiable, Hashable {
+public struct PlannedChange: Identifiable, Hashable, Sendable {
     public let id: UUID
     public let itemID: UUID?
     public let sourceURL: URL
@@ -365,7 +367,7 @@ public struct PlannedChange: Identifiable, Hashable {
     }
 }
 
-public struct BatchPreview {
+public struct BatchPreview: Sendable {
     public var title: String
     public var changes: [PlannedChange]
     public var issues: [PreflightIssue]
@@ -395,6 +397,7 @@ public struct BatchMutation: Sendable {
     public var removedURLs: [URL]
     public var createdURLs: [URL]
     public var restoredURLs: [URL]
+    public var refreshedItemIDs: Set<UUID>
 
     public init(
         title: String,
@@ -402,7 +405,8 @@ public struct BatchMutation: Sendable {
         removedItemIDs: Set<UUID> = [],
         removedURLs: [URL] = [],
         createdURLs: [URL] = [],
-        restoredURLs: [URL] = []
+        restoredURLs: [URL] = [],
+        refreshedItemIDs: Set<UUID> = []
     ) {
         self.title = title
         self.updatedItemLocations = updatedItemLocations
@@ -410,10 +414,11 @@ public struct BatchMutation: Sendable {
         self.removedURLs = removedURLs
         self.createdURLs = createdURLs
         self.restoredURLs = restoredURLs
+        self.refreshedItemIDs = refreshedItemIDs
     }
 }
 
-public struct AppSnapshot: Codable {
+public struct AppSnapshot: Codable, Sendable {
     public var sessions: [ShelfSession]
     public var recentDestinations: [URL]
 
