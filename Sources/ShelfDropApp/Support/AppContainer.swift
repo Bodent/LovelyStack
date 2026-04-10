@@ -49,10 +49,18 @@ final class ShelfViewModel: ObservableObject {
         self.actions = actions
 
         let snapshot = store.load()
-        let initialSessions = snapshot.sessions.isEmpty ? [ShelfSession()] : snapshot.sessions
+        let restoredSessions = snapshot.sessions.isEmpty ? [ShelfSession()] : snapshot.sessions
+        let initialSessions = restoredSessions.map { session in
+            var refreshedSession = session
+            refreshedSession.items = session.items.map { item in
+                catalog.refresh(item: item) ?? item
+            }
+            return refreshedSession
+        }
         self.sessions = initialSessions
         self.selectedSessionID = initialSessions[0].id
         self.recentDestinations = snapshot.recentDestinations
+        persist()
         recalculateReview()
     }
 
@@ -89,9 +97,7 @@ final class ShelfViewModel: ObservableObject {
         sessions.filter { !$0.isPinned }
     }
 
-    var canUndo: Bool {
-        actions.canUndo
-    }
+    @Published var canUndo: Bool = false
 
     func createShelf() {
         sessions.insert(ShelfSession(title: "Shelf \(sessions.count + 1)"), at: 0)
@@ -173,24 +179,27 @@ final class ShelfViewModel: ObservableObject {
     }
 
     func performUndo() {
-        do {
-            if let mutation = try actions.undoLastBatch() {
-                apply(mutation)
+        Task {
+            do {
+                if let mutation = try await actions.undoLastBatch() {
+                    apply(mutation)
+                }
+            } catch {
+                errorMessage = error.localizedDescription
             }
-        } catch {
-            errorMessage = error.localizedDescription
+            canUndo = await actions.canUndo
         }
     }
 
     func previewMove(destination: URL, mode: FileOperationMode) {
         let preview = actions.previewMove(items: selectedItems, to: destination, mode: mode)
         presentPreview(preview) { [weak self] in
-            self?.runAction {
-                let mutation = try self?.actions.executeMove(items: self?.selectedItems ?? [], to: destination, mode: mode)
-                if let mutation {
-                    self?.remember(destination: destination)
-                    self?.apply(mutation)
-                }
+            guard let self else { return }
+            let items = selectedItems
+            runAction {
+                let mutation = try await self.actions.executeMove(items: items, to: destination, mode: mode)
+                self.remember(destination: destination)
+                self.apply(mutation)
             }
         }
     }
@@ -198,12 +207,13 @@ final class ShelfViewModel: ObservableObject {
     func previewArchive(root: URL) {
         let preview = actions.previewArchive(items: selectedItems, root: root, strategy: archiveStrategy)
         presentPreview(preview) { [weak self] in
-            self?.runAction {
-                let mutation = try self?.actions.executeArchive(items: self?.selectedItems ?? [], root: root, strategy: self?.archiveStrategy ?? .createdMonth)
-                if let mutation {
-                    self?.remember(destination: root)
-                    self?.apply(mutation)
-                }
+            guard let self else { return }
+            let items = selectedItems
+            let strategy = archiveStrategy
+            runAction {
+                let mutation = try await self.actions.executeArchive(items: items, root: root, strategy: strategy)
+                self.remember(destination: root)
+                self.apply(mutation)
             }
         }
     }
@@ -211,11 +221,12 @@ final class ShelfViewModel: ObservableObject {
     func previewRename() {
         let preview = actions.previewRename(items: selectedItems, pattern: renamePattern)
         presentPreview(preview) { [weak self] in
-            self?.runAction {
-                let mutation = try self?.actions.executeRename(items: self?.selectedItems ?? [], pattern: self?.renamePattern ?? RenamePattern())
-                if let mutation {
-                    self?.apply(mutation)
-                }
+            guard let self else { return }
+            let items = selectedItems
+            let pattern = renamePattern
+            runAction {
+                let mutation = try await self.actions.executeRename(items: items, pattern: pattern)
+                self.apply(mutation)
             }
         }
     }
@@ -223,11 +234,12 @@ final class ShelfViewModel: ObservableObject {
     func previewMetadata() {
         let preview = actions.previewMetadata(items: selectedItems, request: metadataRequest)
         presentPreview(preview) { [weak self] in
-            self?.runAction {
-                let mutation = try self?.actions.executeMetadata(items: self?.selectedItems ?? [], request: self?.metadataRequest ?? MetadataEditRequest())
-                if let mutation {
-                    self?.apply(mutation)
-                }
+            guard let self else { return }
+            let items = selectedItems
+            let request = metadataRequest
+            runAction {
+                let mutation = try await self.actions.executeMetadata(items: items, request: request)
+                self.apply(mutation)
             }
         }
     }
@@ -235,11 +247,11 @@ final class ShelfViewModel: ObservableObject {
     func previewSafeDelete() {
         let preview = actions.previewSafeDelete(items: selectedItems)
         presentPreview(preview) { [weak self] in
-            self?.runAction {
-                let mutation = try self?.actions.executeSafeDelete(items: self?.selectedItems ?? [])
-                if let mutation {
-                    self?.apply(mutation)
-                }
+            guard let self else { return }
+            let items = selectedItems
+            runAction {
+                let mutation = try await self.actions.executeSafeDelete(items: items)
+                self.apply(mutation)
             }
         }
     }
@@ -247,12 +259,12 @@ final class ShelfViewModel: ObservableObject {
     func previewZip(destination: URL, baseName: String) {
         let preview = actions.previewZip(items: selectedItems, destinationDirectory: destination, baseName: baseName)
         presentPreview(preview) { [weak self] in
-            self?.runAction {
-                let mutation = try self?.actions.executeZip(items: self?.selectedItems ?? [], destinationDirectory: destination, baseName: baseName)
-                if let mutation {
-                    self?.remember(destination: destination)
-                    self?.apply(mutation)
-                }
+            guard let self else { return }
+            let items = selectedItems
+            runAction {
+                let mutation = try await self.actions.executeZip(items: items, destinationDirectory: destination, baseName: baseName)
+                self.remember(destination: destination)
+                self.apply(mutation)
             }
         }
     }
@@ -260,12 +272,13 @@ final class ShelfViewModel: ObservableObject {
     func previewImageTransform(destination: URL) {
         let preview = actions.previewImageTransform(items: selectedItems, plan: imageTransformPlan, destinationDirectory: destination)
         presentPreview(preview) { [weak self] in
-            self?.runAction {
-                let mutation = try self?.actions.executeImageTransform(items: self?.selectedItems ?? [], plan: self?.imageTransformPlan ?? ImageTransformPlan(), destinationDirectory: destination)
-                if let mutation {
-                    self?.remember(destination: destination)
-                    self?.apply(mutation)
-                }
+            guard let self else { return }
+            let items = selectedItems
+            let plan = imageTransformPlan
+            runAction {
+                let mutation = try await self.actions.executeImageTransform(items: items, plan: plan, destinationDirectory: destination)
+                self.remember(destination: destination)
+                self.apply(mutation)
             }
         }
     }
@@ -273,12 +286,12 @@ final class ShelfViewModel: ObservableObject {
     func previewCreatePDF(destination: URL, baseName: String) {
         let preview = actions.previewPDF(from: selectedItems, destinationDirectory: destination, baseName: baseName)
         presentPreview(preview) { [weak self] in
-            self?.runAction {
-                let mutation = try self?.actions.executePDF(from: self?.selectedItems ?? [], destinationDirectory: destination, baseName: baseName)
-                if let mutation {
-                    self?.remember(destination: destination)
-                    self?.apply(mutation)
-                }
+            guard let self else { return }
+            let items = selectedItems
+            runAction {
+                let mutation = try await self.actions.executePDF(from: items, destinationDirectory: destination, baseName: baseName)
+                self.remember(destination: destination)
+                self.apply(mutation)
             }
         }
     }
@@ -298,15 +311,18 @@ final class ShelfViewModel: ObservableObject {
         pendingPreview = PendingPreview(preview: preview, onConfirm: onConfirm)
     }
 
-    private func runAction(_ block: () throws -> Void) {
-        do {
-            isBusy = true
-            try block()
-        } catch {
-            errorMessage = error.localizedDescription
+    private func runAction(_ block: @escaping @MainActor () async throws -> Void) {
+        isBusy = true
+        Task {
+            do {
+                try await block()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isBusy = false
+            pendingPreview = nil
+            canUndo = await actions.canUndo
         }
-        isBusy = false
-        pendingPreview = nil
     }
 
     private func apply(_ mutation: BatchMutation) {

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 public struct ShelfItem: Identifiable, Codable, Hashable {
     public let id: UUID
     public var url: URL
+    public var bookmarkData: Data?
     public var displayName: String
     public var fileExtension: String
     public var kindDescription: String
@@ -22,6 +23,7 @@ public struct ShelfItem: Identifiable, Codable, Hashable {
     public init(
         id: UUID = UUID(),
         url: URL,
+        bookmarkData: Data? = nil,
         displayName: String,
         fileExtension: String,
         kindDescription: String,
@@ -39,6 +41,7 @@ public struct ShelfItem: Identifiable, Codable, Hashable {
     ) {
         self.id = id
         self.url = url
+        self.bookmarkData = bookmarkData
         self.displayName = displayName
         self.fileExtension = fileExtension
         self.kindDescription = kindDescription
@@ -93,7 +96,7 @@ public struct ShelfSession: Identifiable, Codable, Hashable {
     }
 }
 
-public enum FinderLabelColor: String, Codable, CaseIterable, Identifiable {
+public enum FinderLabelColor: String, Codable, CaseIterable, Identifiable, Sendable {
     case none
     case gray
     case green
@@ -145,7 +148,7 @@ public enum FinderLabelColor: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public struct MetadataEditRequest: Codable, Hashable {
+public struct MetadataEditRequest: Codable, Hashable, Sendable {
     public var tags: [String]
     public var comment: String?
     public var label: FinderLabelColor
@@ -192,6 +195,7 @@ public enum RenameDateSource: String, Codable, CaseIterable, Identifiable {
 
 public struct RenamePattern: Codable, Hashable {
     public var prefixesToRemove: [String]
+    public var textToRemove: [String]
     public var separator: RenameSeparator
     public var caseStyle: RenameCaseStyle
     public var includeCounter: Bool
@@ -202,6 +206,7 @@ public struct RenamePattern: Codable, Hashable {
 
     public init(
         prefixesToRemove: [String] = ["IMG_", "DSC_", "Screenshot "],
+        textToRemove: [String] = [],
         separator: RenameSeparator = .underscore,
         caseStyle: RenameCaseStyle = .keep,
         includeCounter: Bool = false,
@@ -211,6 +216,7 @@ public struct RenamePattern: Codable, Hashable {
         customSuffix: String = ""
     ) {
         self.prefixesToRemove = prefixesToRemove
+        self.textToRemove = textToRemove
         self.separator = separator
         self.caseStyle = caseStyle
         self.includeCounter = includeCounter
@@ -237,7 +243,7 @@ public enum ArchiveStrategy: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-public enum FileOperationMode: String, Codable, CaseIterable, Identifiable {
+public enum FileOperationMode: String, Codable, CaseIterable, Identifiable, Sendable {
     case move
     case copy
 
@@ -294,6 +300,7 @@ public enum PreflightSeverity: String, Hashable, Codable {
 
 public enum PreflightIssueKind: String, Hashable, Codable {
     case duplicate
+    case duplicateCheckUnavailable
     case destinationConflict
     case lockedFile
     case unreachable
@@ -381,7 +388,7 @@ public struct BatchPreview {
     }
 }
 
-public struct BatchMutation {
+public struct BatchMutation: Sendable {
     public var title: String
     public var updatedItemLocations: [UUID: URL]
     public var removedItemIDs: Set<UUID>

@@ -10,45 +10,53 @@ struct ShelfRootView: View {
     @State private var isDropTargeted = false
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.96, green: 0.93, blue: 0.87),
-                    Color(red: 0.93, green: 0.96, blue: 0.98),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+        NavigationSplitView {
+            SessionsSidebar(viewModel: viewModel, renameShelfTitle: $renameShelfTitle)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+        } content: {
+            VStack(spacing: 0) {
+                FileReviewBanner(viewModel: viewModel)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
 
-            HSplitView {
-                SessionsSidebar(viewModel: viewModel, renameShelfTitle: $renameShelfTitle)
-                    .frame(minWidth: 220, idealWidth: 250, maxWidth: 280)
+                Divider()
 
-                VStack(spacing: 0) {
-                    HeaderBar(viewModel: viewModel)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 14)
-
-                    Divider()
-
-                    FileReviewBanner(viewModel: viewModel)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
-
-                    DropShelfView(viewModel: viewModel, isDropTargeted: $isDropTargeted)
-                        .padding(18)
-                }
-                .frame(minWidth: 620)
-                .background(Color.white.opacity(0.55))
-
-                InspectorPanel(
-                    viewModel: viewModel,
-                    zipBaseName: $zipBaseName,
-                    pdfBaseName: $pdfBaseName
-                )
-                .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
+                DropShelfView(viewModel: viewModel, isDropTargeted: $isDropTargeted)
             }
+            .navigationSplitViewColumnWidth(min: 400, ideal: 600)
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button {
+                        viewModel.addFiles(urls: FolderPicker.chooseFiles())
+                    } label: {
+                        Label("Add Files", systemImage: "doc.badge.plus")
+                    }
+                    .help("Add Files")
+
+                    Button {
+                        viewModel.togglePinSelectedShelf()
+                    } label: {
+                        Label(viewModel.selectedSession.isPinned ? "Unpin Shelf" : "Pin Shelf", systemImage: viewModel.selectedSession.isPinned ? "pin.slash" : "pin")
+                    }
+                    .help(viewModel.selectedSession.isPinned ? "Unpin Shelf" : "Pin Shelf")
+
+                    Button {
+                        viewModel.performUndo()
+                    } label: {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
+                    }
+                    .disabled(!viewModel.canUndo)
+                    .help("Undo Last Batch")
+                }
+            }
+            .searchable(text: $viewModel.searchText, prompt: "Search files, tags, or type")
+        } detail: {
+            InspectorPanel(
+                viewModel: viewModel,
+                zipBaseName: $zipBaseName,
+                pdfBaseName: $pdfBaseName
+            )
+            .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 450)
         }
         .sheet(item: $viewModel.pendingPreview) { pending in
             ActionPreviewSheet(pending: pending)
@@ -77,94 +85,59 @@ struct ShelfRootView: View {
     }
 }
 
-private struct HeaderBar: View {
-    @ObservedObject var viewModel: ShelfViewModel
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("ShelfDrop")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                Text("Inbox triage for the messy pile you do not want to sort inside Finder.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            TextField("Search files, tags, or type", text: $viewModel.searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 260)
-
-            Button("Add Files…") {
-                viewModel.addFiles(urls: FolderPicker.chooseFiles())
-            }
-
-            Button(viewModel.selectedSession.isPinned ? "Unpin" : "Pin Shelf") {
-                viewModel.togglePinSelectedShelf()
-            }
-
-            Button("Undo Last Batch") {
-                viewModel.performUndo()
-            }
-            .disabled(!viewModel.canUndo)
-        }
-    }
-}
-
 private struct SessionsSidebar: View {
     @ObservedObject var viewModel: ShelfViewModel
     @Binding var renameShelfTitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Shelves")
-                    .font(.headline)
-                Spacer()
+        List(selection: Binding(
+            get: { viewModel.selectedSessionID },
+            set: { newID in if let id = newID { viewModel.select(sessionID: id) } }
+        )) {
+            if !viewModel.pinnedSessions.isEmpty {
+                Section("Pinned") {
+                    ForEach(viewModel.pinnedSessions) { session in
+                        SidebarRow(session: session)
+                            .tag(session.id)
+                    }
+                }
+            }
+
+            Section("Recent") {
+                ForEach(viewModel.recentSessions) { session in
+                    SidebarRow(session: session)
+                        .tag(session.id)
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            VStack(alignment: .leading, spacing: 8) {
+                Divider()
+                TextField("Shelf title", text: Binding(
+                    get: {
+                        renameShelfTitle.isEmpty ? viewModel.selectedSession.title : renameShelfTitle
+                    },
+                    set: { renameShelfTitle = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .onSubmit {
+                    viewModel.renameSelectedShelf(renameShelfTitle)
+                }
+
                 Button {
                     viewModel.createShelf()
                     renameShelfTitle = viewModel.selectedSession.title
                 } label: {
                     Label("New Shelf", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
                 }
+                .controlSize(.large)
                 .buttonStyle(.borderedProminent)
             }
-
-            TextField("Shelf title", text: Binding(
-                get: {
-                    renameShelfTitle.isEmpty ? viewModel.selectedSession.title : renameShelfTitle
-                },
-                set: { renameShelfTitle = $0 }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .onSubmit {
-                viewModel.renameSelectedShelf(renameShelfTitle)
-            }
-
-            if !viewModel.pinnedSessions.isEmpty {
-                shelfSection(title: "Pinned", sessions: viewModel.pinnedSessions)
-            }
-
-            shelfSection(title: "Recent", sessions: viewModel.recentSessions)
-
-            Spacer()
-
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Summon with Option-Space", systemImage: "keyboard")
-                    Label("Preview with Space", systemImage: "eye")
-                    Label("Drag out to file apps", systemImage: "arrow.up.right.square")
-                }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } label: {
-                Text("Shelf Tips")
-            }
+            .padding()
+            .background(.bar)
         }
-        .padding(18)
-        .background(Color.black.opacity(0.05))
         .onAppear {
             renameShelfTitle = viewModel.selectedSession.title
         }
@@ -172,42 +145,27 @@ private struct SessionsSidebar: View {
             renameShelfTitle = viewModel.selectedSession.title
         }
     }
+}
 
-    private func shelfSection(title: String, sessions: [ShelfSession]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            ForEach(sessions) { session in
-                Button {
-                    viewModel.select(sessionID: session.id)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(session.title)
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Text("\(session.items.count) item\(session.items.count == 1 ? "" : "s")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if session.isPinned {
-                            Image(systemName: "pin.fill")
-                                .font(.caption)
-                                .foregroundStyle(Color.orange)
-                        }
-                    }
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14)
-                            .fill(session.id == viewModel.selectedSessionID ? Color.white.opacity(0.8) : Color.white.opacity(0.38))
-                    )
-                }
-                .buttonStyle(.plain)
+private struct SidebarRow: View {
+    let session: ShelfSession
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.title)
+                    .lineLimit(1)
+                Text("\(session.items.count) item\(session.items.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if session.isPinned {
+                Image(systemName: "pin.fill")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
             }
         }
+        .padding(.vertical, 4)
     }
 }
 
@@ -215,7 +173,7 @@ private struct FileReviewBanner: View {
     @ObservedObject var viewModel: ShelfViewModel
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             ReviewBadge(
                 title: "Duplicates",
                 value: "\(viewModel.review.duplicateGroups.count)",
@@ -234,7 +192,7 @@ private struct FileReviewBanner: View {
             Spacer()
             if !viewModel.selectedItemIDs.isEmpty {
                 Text("\(viewModel.selectedItemIDs.count) selected")
-                    .font(.subheadline.weight(.medium))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
@@ -247,19 +205,17 @@ private struct ReviewBadge: View {
     let color: Color
 
     var body: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(color.opacity(0.25))
-                .frame(width: 12, height: 12)
+        HStack(spacing: 6) {
+            Image(systemName: "circle.fill")
+                .foregroundStyle(color)
+                .font(.system(size: 8))
             Text(title)
-                .font(.subheadline)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.headline.monospacedDigit())
+                .monospacedDigit()
+                .fontWeight(.medium)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.regularMaterial, in: Capsule())
+        .font(.subheadline)
     }
 }
 
@@ -268,77 +224,85 @@ private struct DropShelfView: View {
     @Binding var isDropTargeted: Bool
 
     var body: some View {
-        VStack(spacing: 14) {
-            HStack {
-                Text("Current Shelf")
-                    .font(.headline)
-                Spacer()
-                Button("Quick Look") {
-                    viewModel.openQuickLook()
+        ZStack {
+            if viewModel.visibleItems.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "tray.and.arrow.down")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+                    Text("Drop files here to stage a review-first batch")
+                        .font(.title3.weight(.medium))
+                    Text("Then rename, archive, tag, comment, zip, transform, or safely delete them.")
+                        .foregroundStyle(.secondary)
                 }
-                .disabled(viewModel.selectedItemIDs.isEmpty)
-
-                SharingButton(urls: viewModel.selectedItems.map(\.url))
-                    .frame(width: 70)
-
-                Button("Reveal") {
-                    viewModel.revealSelectedInFinder()
-                }
-                .disabled(viewModel.selectedItemIDs.isEmpty)
-
-                Button("Copy Paths") {
-                    viewModel.copySelectedPaths()
-                }
-                .disabled(viewModel.selectedItemIDs.isEmpty)
-
-                Button("Remove from Shelf") {
-                    viewModel.removeSelectedFromShelf()
-                }
-                .disabled(viewModel.selectedItemIDs.isEmpty)
-
-                Button("Clear Shelf") {
-                    viewModel.clearShelf()
-                }
-                .disabled(viewModel.selectedSession.items.isEmpty)
-            }
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(isDropTargeted ? Color.orange.opacity(0.18) : Color.white.opacity(0.82))
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [10, 12]))
-                    .foregroundStyle(isDropTargeted ? Color.orange : Color.secondary.opacity(0.35))
-
-                if viewModel.visibleItems.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "tray.and.arrow.down.fill")
-                            .font(.system(size: 42))
-                            .foregroundStyle(.secondary)
-                        Text("Drop files here to stage a review-first batch")
-                            .font(.title3.weight(.semibold))
-                        Text("Then rename, archive, tag, comment, zip, transform, or safely delete them.")
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding()
-                } else {
-                    List(viewModel.visibleItems, selection: $viewModel.selectedItemIDs) { item in
+                .padding()
+            } else {
+                List(selection: $viewModel.selectedItemIDs) {
+                    ForEach(viewModel.visibleItems) { item in
                         ShelfItemRow(
                             item: item,
                             duplicateGroup: viewModel.review.duplicateGroups.first(where: { $0.itemIDs.contains(item.id) }),
                             issues: viewModel.review.issues.filter { $0.itemID == item.id }
                         )
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+                        .tag(item.id)
+                        .contextMenu {
+                            Button("Quick Look") {
+                                viewModel.openQuickLook()
+                            }
+                            Button("Reveal in Finder") {
+                                viewModel.revealSelectedInFinder()
+                            }
+                            Button("Copy Paths") {
+                                viewModel.copySelectedPaths()
+                            }
+                            Divider()
+                            Button("Remove from Shelf", role: .destructive) {
+                                viewModel.removeSelectedFromShelf()
+                            }
+                        }
                     }
-                    .scrollContentBackground(.hidden)
-                    .listStyle(.plain)
-                    .padding(8)
                 }
+                .listStyle(.inset)
+                .alternatingRowBackgrounds()
             }
-            .dropDestination(for: URL.self) { urls, _ in
-                viewModel.addFiles(urls: urls)
-                return true
-            } isTargeted: { targeted in
+
+            if isDropTargeted {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        VStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 48))
+                                .foregroundStyle(Color.accentColor)
+                            Text("Drop to Add Files")
+                                .font(.title2.weight(.medium))
+                        }
+                    }
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            viewModel.addFiles(urls: urls)
+            return true
+        } isTargeted: { targeted in
+            withAnimation(.easeInOut(duration: 0.2)) {
                 isDropTargeted = targeted
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if !viewModel.visibleItems.isEmpty {
+                HStack {
+                    Button("Quick Look") { viewModel.openQuickLook() }
+                        .disabled(viewModel.selectedItemIDs.isEmpty)
+                    SharingButton(urls: viewModel.selectedItems.map(\.url))
+                        .frame(width: 60)
+                    Spacer()
+                    Button("Clear Shelf", role: .destructive) {
+                        viewModel.clearShelf()
+                    }
+                }
+                .padding()
+                .background(.bar)
+                .overlay(alignment: .top) { Divider() }
             }
         }
     }
@@ -350,63 +314,61 @@ private struct ShelfItemRow: View {
     let issues: [PreflightIssue]
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             ThumbnailView(url: item.url)
-                .frame(width: 70, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(item.displayName)
                         .font(.body.weight(.medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     if duplicateGroup != nil {
-                        Capsule()
-                            .fill(Color.orange.opacity(0.16))
-                            .overlay(
-                                Text("Duplicate")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color.orange)
-                                    .padding(.horizontal, 8)
-                            )
-                            .frame(height: 22)
+                        Text("Duplicate")
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.2), in: Capsule())
+                            .foregroundStyle(Color.orange)
                     }
                 }
-                Text(item.kindDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
                 HStack(spacing: 8) {
+                    Text(item.kindDescription)
+                    Text("•")
+                        .foregroundStyle(.tertiary)
                     Text(ByteCountFormatter.string(fromByteCount: item.byteSize, countStyle: .file))
-                    if item.isLocked {
-                        Label("Locked", systemImage: "lock.fill")
-                    }
-                    if item.isAlias {
-                        Label("Alias", systemImage: "arrow.turn.down.right")
-                    }
-                    if item.isUbiquitous {
-                        Label("iCloud", systemImage: "icloud")
+
+                    if item.isLocked || item.isAlias || item.isUbiquitous {
+                        Text("•")
+                            .foregroundStyle(.tertiary)
+                        HStack(spacing: 4) {
+                            if item.isLocked { Image(systemName: "lock.fill") }
+                            if item.isAlias { Image(systemName: "arrow.turn.down.right") }
+                            if item.isUbiquitous { Image(systemName: "icloud") }
+                        }
                     }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
-            Spacer()
+
+            Spacer(minLength: 16)
+
             if !issues.isEmpty {
                 VStack(alignment: .trailing, spacing: 4) {
                     ForEach(issues.prefix(2)) { issue in
-                        Text(issue.message)
-                            .font(.caption2)
+                        Label(issue.message, systemImage: issue.severity == .error ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .font(.caption)
                             .foregroundStyle(issue.severity == .error ? Color.red : Color.orange)
-                            .multilineTextAlignment(.trailing)
-                            .frame(maxWidth: 240, alignment: .trailing)
+                            .lineLimit(1)
                     }
                 }
             }
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.82))
-        )
+        .padding(.vertical, 4)
     }
 }
 
@@ -415,111 +377,155 @@ private struct InspectorPanel: View {
     @Binding var zipBaseName: String
     @Binding var pdfBaseName: String
 
+    @AppStorage("inspector.expanded.preview") private var isPreviewExpanded = true
+    @AppStorage("inspector.expanded.filing") private var isFilingExpanded = true
+    @AppStorage("inspector.expanded.rename") private var isRenameExpanded = false
+    @AppStorage("inspector.expanded.metadata") private var isMetadataExpanded = false
+    @AppStorage("inspector.expanded.transforms") private var isTransformsExpanded = false
+    @AppStorage("inspector.expanded.issues") private var isIssuesExpanded = true
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                inspectorHeader
-                previewSection
-                filingSection
-                renameSection
-                metadataSection
-                transformSection
-                issuesSection
+        Form {
+            DisclosureGroup(isExpanded: $isPreviewExpanded) {
+                previewContent
+            } label: {
+                Text("Preview")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
             }
-            .padding(18)
+
+            DisclosureGroup(isExpanded: $isFilingExpanded) {
+                filingContent
+            } label: {
+                Text("File & Archive")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+
+            DisclosureGroup(isExpanded: $isRenameExpanded) {
+                renameContent
+            } label: {
+                Text("Rename Cleanup")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+
+            DisclosureGroup(isExpanded: $isMetadataExpanded) {
+                metadataContent
+            } label: {
+                Text("Finder Metadata")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+
+            DisclosureGroup(isExpanded: $isTransformsExpanded) {
+                transformsContent
+            } label: {
+                Text("Batch Transforms")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+
+            DisclosureGroup(isExpanded: $isIssuesExpanded) {
+                issuesContent
+            } label: {
+                Text("Trust Checks")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .background(Color.white.opacity(0.75))
+        .formStyle(.grouped)
     }
 
-    private var inspectorHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Inspector")
-                .font(.headline)
-            Text(viewModel.selectedItemIDs.isEmpty ? "Pick files to review actions." : "\(viewModel.selectedItemIDs.count) file\(viewModel.selectedItemIDs.count == 1 ? "" : "s") selected")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var previewSection: some View {
-        GroupBox("Preview") {
+    private var previewContent: some View {
+        Group {
             if let item = viewModel.selectedItems.first {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .center, spacing: 12) {
                     ThumbnailView(url: item.url)
                         .frame(height: 160)
                         .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                    Text(item.displayName)
-                        .font(.headline)
-                    Text(item.url.path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                    if !item.tags.isEmpty {
-                        Text(item.tags.joined(separator: ", "))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(color: .black.opacity(0.1), radius: 4, y: 2)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.displayName)
+                            .font(.headline)
+                        Text(item.url.path)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(3)
+
+                        if !item.tags.isEmpty {
+                            Text(item.tags.joined(separator: ", "))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 4)
+                        }
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text("Select a file to inspect its thumbnail, tags, and path.")
-                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, 8)
+            } else {
+                Text("Select a file to inspect.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
             }
         }
     }
 
-    private var filingSection: some View {
-        GroupBox("File and Archive") {
-            VStack(alignment: .leading, spacing: 10) {
-                actionButton("Move to Folder…", enabled: !viewModel.selectedItemIDs.isEmpty) {
-                    if let destination = FolderPicker.chooseFolder(title: "Move Selected Files") {
-                        viewModel.previewMove(destination: destination, mode: .move)
-                    }
+    private var filingContent: some View {
+        Group {
+            actionButton("Move to Folder…", enabled: !viewModel.selectedItemIDs.isEmpty) {
+                if let destination = FolderPicker.chooseFolder(title: "Move Selected Files") {
+                    viewModel.previewMove(destination: destination, mode: .move)
                 }
-                actionButton("Copy to Folder…", enabled: !viewModel.selectedItemIDs.isEmpty) {
-                    if let destination = FolderPicker.chooseFolder(title: "Copy Selected Files") {
-                        viewModel.previewMove(destination: destination, mode: .copy)
-                    }
+            }
+            actionButton("Copy to Folder…", enabled: !viewModel.selectedItemIDs.isEmpty) {
+                if let destination = FolderPicker.chooseFolder(title: "Copy Selected Files") {
+                    viewModel.previewMove(destination: destination, mode: .copy)
                 }
+            }
+
+            inspectorLabeledRow("Archive Strategy") {
                 Picker("Archive Strategy", selection: $viewModel.archiveStrategy) {
                     ForEach(ArchiveStrategy.allCases) { strategy in
                         Text(strategy.displayName).tag(strategy)
                     }
                 }
                 .labelsHidden()
+                .pickerStyle(.menu)
+            }
 
-                actionButton("Archive to Root…", enabled: !viewModel.selectedItemIDs.isEmpty) {
-                    if let destination = FolderPicker.chooseFolder(title: "Choose Archive Root") {
-                        viewModel.previewArchive(root: destination)
-                    }
+            actionButton("Archive to Root…", enabled: !viewModel.selectedItemIDs.isEmpty) {
+                if let destination = FolderPicker.chooseFolder(title: "Choose Archive Root") {
+                    viewModel.previewArchive(root: destination)
                 }
+            }
 
-                actionButton("Safe Delete", enabled: !viewModel.selectedItemIDs.isEmpty) {
-                    viewModel.previewSafeDelete()
-                }
+            actionButton("Safe Delete", enabled: !viewModel.selectedItemIDs.isEmpty) {
+                viewModel.previewSafeDelete()
+            }
 
-                if !viewModel.recentDestinations.isEmpty {
-                    Divider()
-                    Text("Recent destinations")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+            if !viewModel.recentDestinations.isEmpty {
+                Section("Recent Destinations") {
                     ForEach(viewModel.recentDestinations, id: \.self) { url in
                         Button(url.lastPathComponent) {
                             viewModel.previewMove(destination: url, mode: .move)
                         }
                         .disabled(viewModel.selectedItemIDs.isEmpty)
+                        .buttonStyle(.link)
                     }
                 }
             }
         }
     }
 
-    private var renameSection: some View {
-        GroupBox("Rename Cleanup") {
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("Prefixes to strip", text: Binding(
+    private var renameContent: some View {
+        Group {
+            inspectorLabeledRow("Strip prefixes\n(comma sep.)") {
+                TextField("", text: Binding(
                     get: { viewModel.renamePattern.prefixesToRemove.joined(separator: ", ") },
                     set: { newValue in
                         viewModel.renamePattern.prefixesToRemove = newValue
@@ -527,45 +533,70 @@ private struct InspectorPanel: View {
                             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                             .filter { !$0.isEmpty }
                     }
+                ), prompt: Text("IMG_, DSC_, Screenshot"))
+            }
+
+            inspectorLabeledRow("Remove text") {
+                TextField("", text: Binding(
+                    get: { viewModel.renamePattern.textToRemove.joined(separator: ", ") },
+                    set: { newValue in
+                        viewModel.renamePattern.textToRemove = newValue
+                            .split(separator: ",")
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                    }
                 ))
-                .textFieldStyle(.roundedBorder)
+            }
 
-                HStack {
-                    Picker("Separator", selection: $viewModel.renamePattern.separator) {
-                        ForEach(RenameSeparator.allCases) { separator in
-                            Text(separator.displayName).tag(separator)
-                        }
-                    }
-                    Picker("Case", selection: $viewModel.renamePattern.caseStyle) {
-                        ForEach(RenameCaseStyle.allCases) { style in
-                            Text(style.rawValue.capitalized).tag(style)
-                        }
+            inspectorLabeledRow("Separator") {
+                Picker("Separator", selection: $viewModel.renamePattern.separator) {
+                    ForEach(RenameSeparator.allCases) { separator in
+                        Text(separator.displayName).tag(separator)
                     }
                 }
-                HStack {
-                    Picker("Date", selection: $viewModel.renamePattern.dateSource) {
-                        ForEach(RenameDateSource.allCases) { source in
-                            Text(source.rawValue.capitalized).tag(source)
-                        }
-                    }
-                    Toggle("Counter", isOn: $viewModel.renamePattern.includeCounter)
-                }
-                TextField("Prefix", text: $viewModel.renamePattern.customPrefix)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Suffix", text: $viewModel.renamePattern.customSuffix)
-                    .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+            }
 
-                actionButton("Preview Rename", enabled: !viewModel.selectedItemIDs.isEmpty) {
-                    viewModel.previewRename()
+            inspectorLabeledRow("Case Style") {
+                Picker("Case Style", selection: $viewModel.renamePattern.caseStyle) {
+                    ForEach(RenameCaseStyle.allCases) { style in
+                        Text(style.rawValue.capitalized).tag(style)
+                    }
                 }
+                .labelsHidden()
+            }
+
+            inspectorLabeledRow("Append Date") {
+                Picker("Append Date", selection: $viewModel.renamePattern.dateSource) {
+                    ForEach(RenameDateSource.allCases) { source in
+                        Text(source.rawValue.capitalized).tag(source)
+                    }
+                }
+                .labelsHidden()
+            }
+
+            inspectorLabeledRow("Include Counter") {
+                Toggle("Include Counter", isOn: $viewModel.renamePattern.includeCounter)
+                    .labelsHidden()
+            }
+
+            inspectorLabeledRow("Custom Prefix") {
+                TextField("", text: $viewModel.renamePattern.customPrefix)
+            }
+            inspectorLabeledRow("Custom Suffix") {
+                TextField("", text: $viewModel.renamePattern.customSuffix)
+            }
+
+            actionButton("Preview Rename", enabled: !viewModel.selectedItemIDs.isEmpty) {
+                viewModel.previewRename()
             }
         }
     }
 
-    private var metadataSection: some View {
-        GroupBox("Finder Metadata") {
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("Tags (comma separated)", text: Binding(
+    private var metadataContent: some View {
+        Group {
+            inspectorLabeledRow("Tags (comma sep.)") {
+                TextField("", text: Binding(
                     get: { viewModel.metadataRequest.tags.joined(separator: ", ") },
                     set: { value in
                         viewModel.metadataRequest.tags = value
@@ -574,104 +605,119 @@ private struct InspectorPanel: View {
                             .filter { !$0.isEmpty }
                     }
                 ))
-                .textFieldStyle(.roundedBorder)
+            }
 
+            inspectorLabeledRow("Finder Label") {
                 Picker("Finder Label", selection: $viewModel.metadataRequest.label) {
                     ForEach(FinderLabelColor.allCases) { label in
                         Text(label.displayName).tag(label)
                     }
                 }
+                .labelsHidden()
+            }
 
-                TextField("Finder Comment", text: Binding(
+            inspectorLabeledRow("Finder Comment") {
+                TextField("", text: Binding(
                     get: { viewModel.metadataRequest.comment ?? "" },
                     set: { viewModel.metadataRequest.comment = $0 }
                 ), axis: .vertical)
                 .lineLimit(3...5)
-                .textFieldStyle(.roundedBorder)
+            }
 
-                actionButton("Preview Metadata", enabled: !viewModel.selectedItemIDs.isEmpty) {
-                    viewModel.previewMetadata()
-                }
+            actionButton("Preview Metadata", enabled: !viewModel.selectedItemIDs.isEmpty) {
+                viewModel.previewMetadata()
             }
         }
     }
 
-    private var transformSection: some View {
-        GroupBox("Small Batch Transforms") {
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("ZIP name", text: $zipBaseName)
-                    .textFieldStyle(.roundedBorder)
-                actionButton("Create ZIP…", enabled: !viewModel.selectedItemIDs.isEmpty) {
-                    if let destination = FolderPicker.chooseFolder(title: "Choose ZIP Destination") {
-                        viewModel.previewZip(destination: destination, baseName: zipBaseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Shelf Bundle" : zipBaseName)
-                    }
+    private var transformsContent: some View {
+        Group {
+            inspectorLabeledRow("ZIP Name") {
+                TextField("", text: $zipBaseName)
+            }
+            actionButton("Create ZIP…", enabled: !viewModel.selectedItemIDs.isEmpty) {
+                if let destination = FolderPicker.chooseFolder(title: "Choose ZIP Destination") {
+                    viewModel.previewZip(destination: destination, baseName: zipBaseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Shelf Bundle" : zipBaseName)
                 }
+            }
 
-                Divider()
+            Divider()
 
-                Picker("Image Format", selection: $viewModel.imageTransformPlan.outputFormat) {
+            inspectorLabeledRow("Image Output") {
+                Picker("Image Output", selection: $viewModel.imageTransformPlan.outputFormat) {
                     ForEach(ImageOutputFormat.allCases) { format in
                         Text(format.rawValue.uppercased()).tag(format)
                     }
                 }
-                Toggle("Strip metadata", isOn: $viewModel.imageTransformPlan.stripMetadata)
-                HStack {
-                    Text("Max size")
-                    Spacer()
-                    TextField(
-                        "2048",
-                        value: Binding(
-                            get: { viewModel.imageTransformPlan.maxPixelSize ?? 2048 },
-                            set: { viewModel.imageTransformPlan.maxPixelSize = $0 }
-                        ),
-                        format: .number
-                    )
-                    .frame(width: 90)
-                }
+                .labelsHidden()
+            }
 
-                actionButton("Convert Images…", enabled: viewModel.selectedItems.contains(where: \.isImage)) {
-                    if let destination = FolderPicker.chooseFolder(title: "Choose Image Output Folder") {
-                        viewModel.previewImageTransform(destination: destination)
-                    }
-                }
+            inspectorLabeledRow("Strip Metadata") {
+                Toggle("Strip Metadata", isOn: $viewModel.imageTransformPlan.stripMetadata)
+                    .labelsHidden()
+            }
 
-                TextField("PDF name", text: $pdfBaseName)
-                    .textFieldStyle(.roundedBorder)
-                actionButton("Create PDF from Images…", enabled: viewModel.selectedItems.contains(where: \.isImage)) {
-                    if let destination = FolderPicker.chooseFolder(title: "Choose PDF Destination") {
-                        viewModel.previewCreatePDF(destination: destination, baseName: pdfBaseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Combined Images" : pdfBaseName)
-                    }
+            inspectorLabeledRow("Max Size (px)") {
+                TextField(
+                    "",
+                    value: Binding(
+                        get: { viewModel.imageTransformPlan.maxPixelSize ?? 2048 },
+                        set: { viewModel.imageTransformPlan.maxPixelSize = $0 }
+                    ),
+                    format: .number
+                )
+            }
+
+            actionButton("Convert Images…", enabled: viewModel.selectedItems.contains(where: \.isImage)) {
+                if let destination = FolderPicker.chooseFolder(title: "Choose Image Output Folder") {
+                    viewModel.previewImageTransform(destination: destination)
+                }
+            }
+
+            Divider()
+
+            inspectorLabeledRow("PDF Name") {
+                TextField("", text: $pdfBaseName)
+            }
+            actionButton("Create PDF from Images…", enabled: viewModel.selectedItems.contains(where: \.isImage)) {
+                if let destination = FolderPicker.chooseFolder(title: "Choose PDF Destination") {
+                    viewModel.previewCreatePDF(destination: destination, baseName: pdfBaseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Combined Images" : pdfBaseName)
                 }
             }
         }
     }
 
-    private var issuesSection: some View {
-        GroupBox("Trust Checks") {
-            VStack(alignment: .leading, spacing: 10) {
-                if viewModel.review.duplicateGroups.isEmpty && viewModel.review.issues.isEmpty {
-                    Text("No issues detected on the current shelf.")
+    private func inspectorLabeledRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        LabeledContent {
+            content()
+        } label: {
+            Text(title)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var issuesContent: some View {
+        Group {
+            if viewModel.review.duplicateGroups.isEmpty && viewModel.review.issues.isEmpty {
+                Text("No issues detected.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(viewModel.review.duplicateGroups) { group in
+                    Text("Exact duplicate group: \(group.itemIDs.count) files, \(ByteCountFormatter.string(fromByteCount: group.byteSize, countStyle: .file)) each")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                } else {
-                    ForEach(viewModel.review.duplicateGroups) { group in
-                        Text("Exact duplicate group: \(group.itemIDs.count) files, \(ByteCountFormatter.string(fromByteCount: group.byteSize, countStyle: .file)) each")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(viewModel.review.issues) { issue in
-                        Text(issue.message)
-                            .font(.caption)
-                            .foregroundStyle(issue.severity == .error ? Color.red : Color.orange)
-                    }
+                }
+                ForEach(viewModel.review.issues) { issue in
+                    Label(issue.message, systemImage: issue.severity == .error ? "exclamationmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(issue.severity == .error ? Color.red : Color.orange)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private func actionButton(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
-            .buttonStyle(.borderedProminent)
             .disabled(!enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
     }

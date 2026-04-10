@@ -1,6 +1,6 @@
 import Foundation
 
-public struct RenamePreviewEntry: Hashable {
+public struct RenamePreviewEntry: Hashable, Sendable {
     public let itemID: UUID
     public let sourceURL: URL
     public let destinationURL: URL
@@ -55,6 +55,11 @@ public enum RenamePlanner {
             if value.range(of: prefix, options: [.anchored, .caseInsensitive]) != nil {
                 value.removeFirst(prefix.count)
             }
+        }
+
+        for text in pattern.textToRemove where !text.isEmpty {
+            let escaped = NSRegularExpression.escapedPattern(for: text)
+            value = value.replacingOccurrences(of: escaped, with: "", options: [.caseInsensitive, .regularExpression])
         }
 
         value = value
