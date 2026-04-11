@@ -282,7 +282,7 @@ public struct ImageTransformPlan: Codable, Hashable, Sendable {
 
     public init(
         outputFormat: ImageOutputFormat = .jpeg,
-        maxPixelSize: Int? = 2048,
+        maxPixelSize: Int? = nil,
         compressionQuality: Double = 0.82,
         stripMetadata: Bool = true
     ) {

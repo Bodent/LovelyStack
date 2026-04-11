@@ -24,6 +24,8 @@
 	<string>public.app-category.productivity</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>ShelfDrop needs Finder access to read and update tags, labels, and comments on your files.</string>
 	<key>NSServices</key>
 	<array>
 		<dict>

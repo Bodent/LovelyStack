@@ -17,6 +17,9 @@ public enum RenamePlanner {
             let source = item.url
             let baseName = source.deletingPathExtension().lastPathComponent
             let cleaned = clean(baseName: baseName, using: pattern)
+            let renamedBody = pattern.caseStyle == .title
+                ? applyCaseStyle(cleaned, style: .title, separator: pattern.separator)
+                : cleaned
 
             var components = [String]()
             if !pattern.customPrefix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -25,7 +28,7 @@ public enum RenamePlanner {
             if let dateString = dateComponent(for: item, source: pattern.dateSource, formatter: formatter) {
                 components.append(dateString)
             }
-            components.append(cleaned)
+            components.append(renamedBody)
             if !pattern.customSuffix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 components.append(pattern.customSuffix.trimmingCharacters(in: .whitespacesAndNewlines))
             }
@@ -38,8 +41,11 @@ public enum RenamePlanner {
                 .replacingOccurrences(of: "\\s+", with: pattern.separator.rawValue, options: .regularExpression)
                 .trimmingCharacters(in: CharacterSet(charactersIn: pattern.separator.rawValue).union(.whitespacesAndNewlines))
 
-            let transformed = applyCaseStyle(joined, style: pattern.caseStyle, separator: pattern.separator)
-            let filename = item.fileExtension.isEmpty ? transformed : "\(transformed).\(item.fileExtension)"
+            let transformed = pattern.caseStyle == .title
+                ? joined
+                : applyCaseStyle(joined, style: pattern.caseStyle, separator: pattern.separator)
+            let fileExtension = pattern.caseStyle == .lower ? item.fileExtension.lowercased() : item.fileExtension
+            let filename = fileExtension.isEmpty ? transformed : "\(transformed).\(fileExtension)"
             return RenamePreviewEntry(
                 itemID: item.id,
                 sourceURL: source,
@@ -51,9 +57,18 @@ public enum RenamePlanner {
 
     private static func clean(baseName: String, using pattern: RenamePattern) -> String {
         var value = baseName
-        for prefix in pattern.prefixesToRemove where !prefix.isEmpty {
-            if let matchedRange = value.range(of: prefix, options: [.anchored, .caseInsensitive]) {
-                value.removeSubrange(matchedRange)
+        let prefixes = pattern.prefixesToRemove.filter { !$0.isEmpty }
+        while !value.isEmpty {
+            var didRemovePrefix = false
+            for prefix in prefixes {
+                if let matchedRange = value.range(of: prefix, options: [.anchored, .caseInsensitive, .diacriticInsensitive]) {
+                    value.removeSubrange(matchedRange)
+                    didRemovePrefix = true
+                    break
+                }
+            }
+            if !didRemovePrefix {
+                break
             }
         }
 

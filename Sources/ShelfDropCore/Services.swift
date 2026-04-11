@@ -1,4 +1,5 @@
 import AppKit
+import CoreImage
 import CryptoKit
 import Foundation
 import ImageIO
@@ -48,8 +49,11 @@ public struct ShelfStoreLoadResult {
 }
 
 public final class ShelfStore {
+    private static let writeProtectionMessage = "Saved shelf state appears corrupted and was preserved. ShelfDrop will not overwrite state.json until it loads successfully again."
+
     private let snapshotURL: URL
     private let fileManager: FileManager
+    private var writeProtectionReason: String?
 
     public init(baseDirectory: URL, fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -58,6 +62,7 @@ public final class ShelfStore {
 
     public func load() -> ShelfStoreLoadResult {
         guard fileManager.fileExists(atPath: snapshotURL.path) else {
+            writeProtectionReason = nil
             return ShelfStoreLoadResult(snapshot: AppSnapshot(sessions: [ShelfSession()], recentDestinations: [], selectedSessionID: nil))
         }
 
@@ -65,16 +70,26 @@ public final class ShelfStore {
             let data = try Data(contentsOf: snapshotURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            return ShelfStoreLoadResult(snapshot: try decoder.decode(AppSnapshot.self, from: data))
+            let snapshot = try decoder.decode(AppSnapshot.self, from: data)
+            writeProtectionReason = nil
+            return ShelfStoreLoadResult(snapshot: snapshot)
         } catch {
+            writeProtectionReason = Self.writeProtectionMessage
             return ShelfStoreLoadResult(
                 snapshot: AppSnapshot(sessions: [ShelfSession()], recentDestinations: [], selectedSessionID: nil),
-                warning: "Could not decode saved shelf state: \(error.localizedDescription)"
+                warning: "Could not decode saved shelf state: \(error.localizedDescription). \(Self.writeProtectionMessage)"
             )
         }
     }
 
     public func save(_ snapshot: AppSnapshot) throws {
+        if let writeProtectionReason {
+            throw NSError(
+                domain: "ShelfDrop.Store",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: writeProtectionReason]
+            )
+        }
         try fileManager.createDirectory(at: snapshotURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -315,14 +330,18 @@ public struct FinderMetadataSnapshot: Hashable, Sendable {
 }
 
 public final class FinderMetadataService {
-    public init() {}
+    private let executeScript: (String) throws -> NSAppleEventDescriptor?
 
-    public func snapshot(for url: URL) -> FinderMetadataSnapshot {
+    public init(executeScript: @escaping (String) throws -> NSAppleEventDescriptor? = FinderMetadataService.liveExecuteAppleScript) {
+        self.executeScript = executeScript
+    }
+
+    public func snapshot(for url: URL) throws -> FinderMetadataSnapshot {
         let values = try? url.resourceValues(forKeys: [.tagNamesKey])
         return FinderMetadataSnapshot(
             tags: values?.tagNames ?? [],
-            comment: finderComment(for: url),
-            label: finderLabel(for: url)
+            comment: try finderComment(for: url),
+            label: try finderLabel(for: url)
         )
     }
 
@@ -337,24 +356,24 @@ public final class FinderMetadataService {
         try apply(.init(tags: snapshot.tags, comment: snapshot.comment, label: snapshot.label), to: url)
     }
 
-    private func finderComment(for url: URL) -> String? {
+    private func finderComment(for url: URL) throws -> String? {
         let script = """
         tell application "Finder"
             set theItem to POSIX file \(appleScriptStringLiteral(url.path)) as alias
             return comment of theItem
         end tell
         """
-        return executeAppleScript(script)?.stringValue
+        return try descriptor(for: script).stringValue
     }
 
-    private func finderLabel(for url: URL) -> FinderLabelColor {
+    private func finderLabel(for url: URL) throws -> FinderLabelColor {
         let script = """
         tell application "Finder"
             set theItem to POSIX file \(appleScriptStringLiteral(url.path)) as alias
             return label index of theItem
         end tell
         """
-        let value = Int(executeAppleScript(script)?.int32Value ?? 0)
+        let value = Int(try descriptor(for: script).int32Value)
         return FinderLabelColor(finderIndex: value)
     }
 
@@ -378,19 +397,36 @@ public final class FinderMetadataService {
         try runAppleScript(script)
     }
 
-    private func executeAppleScript(_ source: String) -> NSAppleEventDescriptor? {
+    public static func liveExecuteAppleScript(_ source: String) throws -> NSAppleEventDescriptor? {
         var errorInfo: NSDictionary?
         let script = NSAppleScript(source: source)
-        return script?.executeAndReturnError(&errorInfo)
-    }
-
-    private func runAppleScript(_ source: String) throws {
-        var errorInfo: NSDictionary?
-        let script = NSAppleScript(source: source)
-        script?.executeAndReturnError(&errorInfo)
+        guard let script else {
+            throw NSError(
+                domain: "ShelfDrop.Metadata",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Could not compile the AppleScript used to access Finder metadata."]
+            )
+        }
+        let descriptor = script.executeAndReturnError(&errorInfo)
         if let errorInfo {
             throw NSError(domain: "ShelfDrop.Metadata", code: 1, userInfo: errorInfo as? [String: Any])
         }
+        return descriptor
+    }
+
+    private func descriptor(for source: String) throws -> NSAppleEventDescriptor {
+        if let descriptor = try executeScript(source) {
+            return descriptor
+        }
+        throw NSError(
+            domain: "ShelfDrop.Metadata",
+            code: 3,
+            userInfo: [NSLocalizedDescriptionKey: "Finder did not return metadata for the requested item."]
+        )
+    }
+
+    private func runAppleScript(_ source: String) throws {
+        _ = try descriptor(for: source)
     }
 
     func appleScriptStringLiteral(_ value: String) -> String {
@@ -411,31 +447,28 @@ public final class FinderMetadataService {
 }
 
 public final class ImageTransformService {
-    public init() {}
+    private let fileManager: FileManager
+    private let ciContext: CIContext
+
+    public init(fileManager: FileManager = .default, ciContext: CIContext = CIContext()) {
+        self.fileManager = fileManager
+        self.ciContext = ciContext
+    }
 
     public func transform(items: [ShelfItem], plan: ImageTransformPlan, destinationDirectory: URL) throws -> [URL] {
         var outputs = [URL]()
-        try FileManager.default.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
 
         for item in items where item.isImage {
             let outputURL = try withAccessibleURL(for: item) { sourceURL in
                 guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil) else {
                     throw NSError(domain: "ShelfDrop.ImageTransform", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not read \(item.displayName)."])
                 }
-                let options: [CFString: Any] = [
-                    kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceShouldCacheImmediately: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: plan.maxPixelSize ?? 4096,
-                ]
-                guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-                    throw NSError(domain: "ShelfDrop.ImageTransform", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not decode \(item.displayName)."])
-                }
+                let image = try decodeImage(from: source, itemName: item.displayName, plan: plan)
 
                 let basename = sourceURL.deletingPathExtension().lastPathComponent
                 let outputURL = destinationDirectory.appendingPathComponent("\(basename).\(plan.outputFormat.fileExtension)")
-                guard !FileManager.default.fileExists(atPath: outputURL.path) else {
+                guard !fileManager.fileExists(atPath: outputURL.path) else {
                     throw NSError(domain: "ShelfDrop.ImageTransform", code: 2, userInfo: [NSLocalizedDescriptionKey: "Destination exists for \(outputURL.lastPathComponent)."])
                 }
 
@@ -443,14 +476,7 @@ public final class ImageTransformService {
                     throw NSError(domain: "ShelfDrop.ImageTransform", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create \(outputURL.lastPathComponent)."])
                 }
 
-                var properties = [CFString: Any]()
-                if !plan.stripMetadata,
-                   let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-                    properties.merge(metadata) { current, _ in current }
-                }
-                if plan.outputFormat == .jpeg {
-                    properties[kCGImageDestinationLossyCompressionQuality] = plan.compressionQuality
-                }
+                let properties = sanitizedProperties(for: source, image: image, plan: plan)
                 CGImageDestinationAddImage(destination, image, properties as CFDictionary)
                 guard CGImageDestinationFinalize(destination) else {
                     throw NSError(domain: "ShelfDrop.ImageTransform", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to write \(outputURL.lastPathComponent)."])
@@ -466,7 +492,7 @@ public final class ImageTransformService {
     }
 
     public func createPDF(from items: [ShelfItem], destinationURL: URL) throws -> URL {
-        guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
+        guard !fileManager.fileExists(atPath: destinationURL.path) else {
             throw NSError(domain: "ShelfDrop.PDF", code: 2, userInfo: [NSLocalizedDescriptionKey: "Destination exists for \(destinationURL.lastPathComponent)."])
         }
 
@@ -496,6 +522,67 @@ public final class ImageTransformService {
 
         return destinationURL
     }
+
+    private func decodeImage(from source: CGImageSource, itemName: String, plan: ImageTransformPlan) throws -> CGImage {
+        if let maxPixelSize = plan.maxPixelSize {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageIfAbsent: true,
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            ]
+            guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+                throw NSError(domain: "ShelfDrop.ImageTransform", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not decode \(itemName)."])
+            }
+            return image
+        }
+
+        guard let rawImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw NSError(domain: "ShelfDrop.ImageTransform", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not decode \(itemName)."])
+        }
+
+        let orientation = sourceOrientation(for: source)
+        guard orientation != .up else {
+            return rawImage
+        }
+
+        let ciImage = CIImage(cgImage: rawImage).oriented(orientation)
+        guard let orientedImage = ciContext.createCGImage(ciImage, from: ciImage.extent.integral) else {
+            throw NSError(domain: "ShelfDrop.ImageTransform", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not normalize orientation for \(itemName)."])
+        }
+        return orientedImage
+    }
+
+    private func sanitizedProperties(for source: CGImageSource, image: CGImage, plan: ImageTransformPlan) -> [CFString: Any] {
+        var properties = [CFString: Any]()
+        if !plan.stripMetadata,
+           let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+            properties.merge(metadata) { current, _ in current }
+            properties[kCGImagePropertyPixelWidth] = image.width
+            properties[kCGImagePropertyPixelHeight] = image.height
+            properties[kCGImagePropertyOrientation] = 1
+
+            if var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+                tiff[kCGImagePropertyTIFFOrientation] = 1
+                properties[kCGImagePropertyTIFFDictionary] = tiff
+            }
+        }
+        if plan.outputFormat == .jpeg {
+            properties[kCGImageDestinationLossyCompressionQuality] = plan.compressionQuality
+        }
+        return properties
+    }
+
+    private func sourceOrientation(for source: CGImageSource) -> CGImagePropertyOrientation {
+        guard let metadata = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let rawValue = metadata[kCGImagePropertyOrientation] as? UInt32,
+              let orientation = CGImagePropertyOrientation(rawValue: rawValue)
+        else {
+            return .up
+        }
+        return orientation
+    }
 }
 
 extension DuplicateDetectionService: @unchecked Sendable {}
@@ -517,12 +604,12 @@ public actor FileActionService {
         fileManager: FileManager = .default,
         preflightService: FilePreflightService = FilePreflightService(),
         metadataService: FinderMetadataService = FinderMetadataService(),
-        imageService: ImageTransformService = ImageTransformService()
+        imageService: ImageTransformService? = nil
     ) {
         self.fileManager = fileManager
         self.preflightService = preflightService
         self.metadataService = metadataService
-        self.imageService = imageService
+        self.imageService = imageService ?? ImageTransformService(fileManager: fileManager)
         self.trashDirectory = baseDirectory.appendingPathComponent("AppTrash", isDirectory: true)
     }
 
@@ -647,7 +734,7 @@ public actor FileActionService {
         var undoSteps = [UndoStep]()
         for item in items {
             let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
-                let snapshot = metadataService.snapshot(for: sourceURL)
+                let snapshot = try metadataService.snapshot(for: sourceURL)
                 try metadataService.apply(request, to: sourceURL)
                 return .restoreMetadata(url: sourceURL, snapshot: snapshot)
             }
@@ -658,11 +745,16 @@ public actor FileActionService {
     }
 
     public nonisolated func previewSafeDelete(items: [ShelfItem]) -> BatchPreview {
-        buildPreview(
+        let batchDirectory = trashDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        return buildPreview(
             title: "Safe Delete Preview",
-            changes: items.map {
-                let trashURL = trashDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent($0.url.lastPathComponent)
-                return PlannedChange(itemID: $0.id, sourceURL: $0.url, destinationURL: trashURL, summary: "Move \($0.displayName) into ShelfDrop recovery trash")
+            changes: safeDeletePlans(for: items, batchDirectory: batchDirectory).map { plan in
+                PlannedChange(
+                    itemID: plan.item.id,
+                    sourceURL: plan.item.url,
+                    destinationURL: plan.trashURL,
+                    summary: "Move \(plan.item.displayName) into ShelfDrop recovery trash"
+                )
             },
             reviewItems: items
         )
@@ -676,16 +768,16 @@ public actor FileActionService {
             refreshedItemIDs: Set(items.map(\.id))
         )
         var undoSteps = [UndoStep]()
+        let batchDirectory = trashDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let plans = safeDeletePlans(for: items, batchDirectory: batchDirectory)
+        try fileManager.createDirectory(at: batchDirectory, withIntermediateDirectories: true)
 
-        for item in items {
-            let folder = trashDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-            try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
-            let trashURL = folder.appendingPathComponent(item.url.lastPathComponent)
-            let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
-                try fileManager.moveItem(at: sourceURL, to: trashURL)
-                return .restoreFromSafeDelete(original: sourceURL, trashURL: trashURL)
+        for plan in plans {
+            let step: UndoStep = try withAccessibleURL(for: plan.item) { sourceURL in
+                try fileManager.moveItem(at: sourceURL, to: plan.trashURL)
+                return .restoreFromSafeDelete(original: sourceURL, trashURL: plan.trashURL, batchDirectory: batchDirectory)
             }
-            mutation.removedItemIDs.insert(item.id)
+            mutation.removedItemIDs.insert(plan.item.id)
             undoSteps.append(step)
         }
 
@@ -804,14 +896,14 @@ public actor FileActionService {
                 if fileManager.fileExists(atPath: to.path) {
                     try fileManager.moveItem(at: to, to: from)
                 }
-            case let .restoreFromSafeDelete(original, trashURL):
+            case let .restoreFromSafeDelete(original, trashURL, _):
                 if fileManager.fileExists(atPath: trashURL.path) {
                     try fileManager.createDirectory(at: original.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try fileManager.moveItem(at: trashURL, to: original)
-                    try removeDirectoryIfEmpty(at: trashURL.deletingLastPathComponent())
-                    try removeDirectoryIfEmpty(at: trashDirectory)
                     mutation.restoredURLs.append(original)
                 }
+                try removeDirectoryIfEmpty(at: trashURL.deletingLastPathComponent())
+                try removeDirectoryIfEmpty(at: trashDirectory)
             case let .removeCreated(url):
                 if fileManager.fileExists(atPath: url.path) {
                     try fileManager.removeItem(at: url)
@@ -847,6 +939,8 @@ public actor FileActionService {
     private func recordUndoBatch(title: String, steps: [UndoStep]) {
         undoBatches.append(.init(title: title, steps: steps))
         if undoBatches.count > maxUndoBatches {
+            let evictedBatches = undoBatches.prefix(undoBatches.count - maxUndoBatches)
+            evictedBatches.forEach(cleanupDiscardedUndoBatchResources)
             undoBatches.removeFirst(undoBatches.count - maxUndoBatches)
         }
     }
@@ -862,6 +956,20 @@ public actor FileActionService {
         if contents.isEmpty {
             try fileManager.removeItem(at: url)
         }
+    }
+
+    private func cleanupDiscardedUndoBatchResources(_ batch: UndoBatch) {
+        let safeDeleteDirectories = Set(batch.steps.compactMap { step -> URL? in
+            guard case let .restoreFromSafeDelete(_, _, batchDirectory) = step else {
+                return nil
+            }
+            return batchDirectory
+        })
+
+        for directory in safeDeleteDirectories where fileManager.fileExists(atPath: directory.path) {
+            try? fileManager.removeItem(at: directory)
+        }
+        try? removeDirectoryIfEmpty(at: trashDirectory)
     }
 
     nonisolated private func buildPreview(
@@ -1019,6 +1127,32 @@ public actor FileActionService {
         return itemsByID
     }
 
+    nonisolated private func safeDeletePlans(for items: [ShelfItem], batchDirectory: URL) -> [SafeDeletePlanEntry] {
+        var usedNames = Set<String>()
+        return items.map { item in
+            let filename = uniquedFilename(for: item.url.lastPathComponent, usedNames: &usedNames)
+            return SafeDeletePlanEntry(item: item, trashURL: batchDirectory.appendingPathComponent(filename))
+        }
+    }
+
+    nonisolated private func uniquedFilename(for originalName: String, usedNames: inout Set<String>) -> String {
+        guard !usedNames.contains(originalName) else {
+            let url = URL(fileURLWithPath: originalName)
+            let stem = url.deletingPathExtension().lastPathComponent
+            let fileExtension = url.pathExtension
+            var counter = 2
+            while true {
+                let candidate = fileExtension.isEmpty ? "\(stem) \(counter)" : "\(stem) \(counter).\(fileExtension)"
+                if usedNames.insert(candidate).inserted {
+                    return candidate
+                }
+                counter += 1
+            }
+        }
+        usedNames.insert(originalName)
+        return originalName
+    }
+
     private enum RelocationOperation {
         case move
         case copy
@@ -1030,9 +1164,14 @@ private struct UndoBatch: Sendable {
     let steps: [UndoStep]
 }
 
+private struct SafeDeletePlanEntry: Sendable {
+    let item: ShelfItem
+    let trashURL: URL
+}
+
 private enum UndoStep: Sendable {
     case move(from: URL, to: URL)
-    case restoreFromSafeDelete(original: URL, trashURL: URL)
+    case restoreFromSafeDelete(original: URL, trashURL: URL, batchDirectory: URL)
     case removeCreated(URL)
     case restoreMetadata(url: URL, snapshot: FinderMetadataSnapshot)
 }

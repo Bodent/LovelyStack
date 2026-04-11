@@ -246,8 +246,93 @@ final class ShelfViewModel: ObservableObject {
     func previewMove(destination: URL, mode: FileOperationMode) {
         let items = selectedItems
         let preview = actions.previewMove(items: items, to: destination, mode: mode)
-        presentPreview(preview) { [weak self, items, destination, mode] in
-            guard let self else { return }
+        presentPreview(
+            preview,
+            action: .move(sessionID: selectedSessionID, itemIDs: items.map(\.id), destination: destination, mode: mode)
+        )
+    }
+
+    func previewArchive(root: URL) {
+        let items = selectedItems
+        let strategy = archiveStrategy
+        let preview = actions.previewArchive(items: items, root: root, strategy: strategy)
+        presentPreview(
+            preview,
+            action: .archive(sessionID: selectedSessionID, itemIDs: items.map(\.id), root: root, strategy: strategy)
+        )
+    }
+
+    func previewRename() {
+        let items = selectedItems
+        let pattern = renamePattern
+        let preview = actions.previewRename(items: items, pattern: pattern)
+        presentPreview(
+            preview,
+            action: .rename(sessionID: selectedSessionID, itemIDs: items.map(\.id), pattern: pattern)
+        )
+    }
+
+    func previewMetadata() {
+        let items = selectedItems
+        let request = metadataRequest
+        let preview = actions.previewMetadata(items: items, request: request)
+        presentPreview(
+            preview,
+            action: .metadata(sessionID: selectedSessionID, itemIDs: items.map(\.id), request: request)
+        )
+    }
+
+    func previewSafeDelete() {
+        let items = selectedItems
+        let preview = actions.previewSafeDelete(items: items)
+        presentPreview(
+            preview,
+            action: .safeDelete(sessionID: selectedSessionID, itemIDs: items.map(\.id))
+        )
+    }
+
+    func previewZip(destination: URL, baseName: String) {
+        let items = selectedItems
+        let preview = actions.previewZip(items: items, destinationDirectory: destination, baseName: baseName)
+        presentPreview(
+            preview,
+            action: .zip(sessionID: selectedSessionID, itemIDs: items.map(\.id), destination: destination, baseName: baseName)
+        )
+    }
+
+    func previewImageTransform(destination: URL) {
+        let items = selectedItems
+        let plan = imageTransformPlan
+        let preview = actions.previewImageTransform(items: items, plan: plan, destinationDirectory: destination)
+        presentPreview(
+            preview,
+            action: .imageTransform(sessionID: selectedSessionID, itemIDs: items.map(\.id), plan: plan, destination: destination)
+        )
+    }
+
+    func previewCreatePDF(destination: URL, baseName: String) {
+        let items = selectedItems
+        let preview = actions.previewPDF(from: items, destinationDirectory: destination, baseName: baseName)
+        presentPreview(
+            preview,
+            action: .createPDF(sessionID: selectedSessionID, itemIDs: items.map(\.id), destination: destination, baseName: baseName)
+        )
+    }
+
+    func dismissPreview() {
+        pendingPreview = nil
+    }
+
+    func confirmPendingPreview() {
+        guard let pendingPreview else { return }
+        guard let items = resolveItems(for: pendingPreview.action) else {
+            self.pendingPreview = nil
+            errorMessage = "The selected items changed after this preview was generated. Run the preview again before executing."
+            return
+        }
+
+        switch pendingPreview.action {
+        case let .move(_, _, destination, mode):
             runAction(
                 operation: { actions in
                     try await actions.executeMove(items: items, to: destination, mode: mode)
@@ -257,15 +342,7 @@ final class ShelfViewModel: ObservableObject {
                     self.apply(mutation)
                 }
             )
-        }
-    }
-
-    func previewArchive(root: URL) {
-        let items = selectedItems
-        let strategy = archiveStrategy
-        let preview = actions.previewArchive(items: items, root: root, strategy: strategy)
-        presentPreview(preview) { [weak self, items, root, strategy] in
-            guard let self else { return }
+        case let .archive(_, _, root, strategy):
             runAction(
                 operation: { actions in
                     try await actions.executeArchive(items: items, root: root, strategy: strategy)
@@ -275,15 +352,7 @@ final class ShelfViewModel: ObservableObject {
                     self.apply(mutation)
                 }
             )
-        }
-    }
-
-    func previewRename() {
-        let items = selectedItems
-        let pattern = renamePattern
-        let preview = actions.previewRename(items: items, pattern: pattern)
-        presentPreview(preview) { [weak self, items, pattern] in
-            guard let self else { return }
+        case let .rename(_, _, pattern):
             runAction(
                 operation: { actions in
                     try await actions.executeRename(items: items, pattern: pattern)
@@ -292,15 +361,7 @@ final class ShelfViewModel: ObservableObject {
                     self.apply(mutation)
                 }
             )
-        }
-    }
-
-    func previewMetadata() {
-        let items = selectedItems
-        let request = metadataRequest
-        let preview = actions.previewMetadata(items: items, request: request)
-        presentPreview(preview) { [weak self, items, request] in
-            guard let self else { return }
+        case let .metadata(_, _, request):
             runAction(
                 operation: { actions in
                     try await actions.executeMetadata(items: items, request: request)
@@ -309,14 +370,7 @@ final class ShelfViewModel: ObservableObject {
                     self.apply(mutation)
                 }
             )
-        }
-    }
-
-    func previewSafeDelete() {
-        let items = selectedItems
-        let preview = actions.previewSafeDelete(items: items)
-        presentPreview(preview) { [weak self, items] in
-            guard let self else { return }
+        case .safeDelete:
             runAction(
                 operation: { actions in
                     try await actions.executeSafeDelete(items: items)
@@ -325,14 +379,7 @@ final class ShelfViewModel: ObservableObject {
                     self.apply(mutation)
                 }
             )
-        }
-    }
-
-    func previewZip(destination: URL, baseName: String) {
-        let items = selectedItems
-        let preview = actions.previewZip(items: items, destinationDirectory: destination, baseName: baseName)
-        presentPreview(preview) { [weak self, items, destination, baseName] in
-            guard let self else { return }
+        case let .zip(_, _, destination, baseName):
             runAction(
                 operation: { actions in
                     try await actions.executeZip(items: items, destinationDirectory: destination, baseName: baseName)
@@ -342,15 +389,7 @@ final class ShelfViewModel: ObservableObject {
                     self.apply(mutation)
                 }
             )
-        }
-    }
-
-    func previewImageTransform(destination: URL) {
-        let items = selectedItems
-        let plan = imageTransformPlan
-        let preview = actions.previewImageTransform(items: items, plan: plan, destinationDirectory: destination)
-        presentPreview(preview) { [weak self, items, plan, destination] in
-            guard let self else { return }
+        case let .imageTransform(_, _, plan, destination):
             runAction(
                 operation: { actions in
                     try await actions.executeImageTransform(items: items, plan: plan, destinationDirectory: destination)
@@ -360,14 +399,7 @@ final class ShelfViewModel: ObservableObject {
                     self.apply(mutation)
                 }
             )
-        }
-    }
-
-    func previewCreatePDF(destination: URL, baseName: String) {
-        let items = selectedItems
-        let preview = actions.previewPDF(from: items, destinationDirectory: destination, baseName: baseName)
-        presentPreview(preview) { [weak self, items, destination, baseName] in
-            guard let self else { return }
+        case let .createPDF(_, _, destination, baseName):
             runAction(
                 operation: { actions in
                     try await actions.executePDF(from: items, destinationDirectory: destination, baseName: baseName)
@@ -378,10 +410,6 @@ final class ShelfViewModel: ObservableObject {
                 }
             )
         }
-    }
-
-    func dismissPreview() {
-        pendingPreview = nil
     }
 
     func reloadFromStore() {
@@ -402,8 +430,8 @@ final class ShelfViewModel: ObservableObject {
         persist()
     }
 
-    private func presentPreview(_ preview: BatchPreview, onConfirm: @escaping () -> Void) {
-        pendingPreview = PendingPreview(preview: preview, onConfirm: onConfirm)
+    private func presentPreview(_ preview: BatchPreview, action: PendingBatchAction) {
+        pendingPreview = PendingPreview(preview: preview, action: action)
     }
 
     private func runAction<Result: Sendable>(
@@ -479,6 +507,19 @@ final class ShelfViewModel: ObservableObject {
         recalculateReview()
     }
 
+    private func resolveItems(for action: PendingBatchAction) -> [ShelfItem]? {
+        guard let session = sessions.first(where: { $0.id == action.sessionID }) else {
+            return nil
+        }
+
+        let itemsByID = Dictionary(uniqueKeysWithValues: session.items.map { ($0.id, $0) })
+        let items = action.itemIDs.compactMap { itemsByID[$0] }
+        guard items.count == action.itemIDs.count else {
+            return nil
+        }
+        return items
+    }
+
     private static func normalizedSnapshot(
         from snapshot: AppSnapshot,
         refreshItems: Bool,
@@ -524,5 +565,44 @@ final class ShelfViewModel: ObservableObject {
 struct PendingPreview: Identifiable {
     let id = UUID()
     let preview: BatchPreview
-    let onConfirm: () -> Void
+    let action: PendingBatchAction
+}
+
+enum PendingBatchAction {
+    case move(sessionID: UUID, itemIDs: [UUID], destination: URL, mode: FileOperationMode)
+    case archive(sessionID: UUID, itemIDs: [UUID], root: URL, strategy: ArchiveStrategy)
+    case rename(sessionID: UUID, itemIDs: [UUID], pattern: RenamePattern)
+    case metadata(sessionID: UUID, itemIDs: [UUID], request: MetadataEditRequest)
+    case safeDelete(sessionID: UUID, itemIDs: [UUID])
+    case zip(sessionID: UUID, itemIDs: [UUID], destination: URL, baseName: String)
+    case imageTransform(sessionID: UUID, itemIDs: [UUID], plan: ImageTransformPlan, destination: URL)
+    case createPDF(sessionID: UUID, itemIDs: [UUID], destination: URL, baseName: String)
+
+    var sessionID: UUID {
+        switch self {
+        case let .move(sessionID, _, _, _),
+             let .archive(sessionID, _, _, _),
+             let .rename(sessionID, _, _),
+             let .metadata(sessionID, _, _),
+             let .safeDelete(sessionID, _),
+             let .zip(sessionID, _, _, _),
+             let .imageTransform(sessionID, _, _, _),
+             let .createPDF(sessionID, _, _, _):
+            sessionID
+        }
+    }
+
+    var itemIDs: [UUID] {
+        switch self {
+        case let .move(_, itemIDs, _, _),
+             let .archive(_, itemIDs, _, _),
+             let .rename(_, itemIDs, _),
+             let .metadata(_, itemIDs, _),
+             let .safeDelete(_, itemIDs),
+             let .zip(_, itemIDs, _, _),
+             let .imageTransform(_, itemIDs, _, _),
+             let .createPDF(_, itemIDs, _, _):
+            itemIDs
+        }
+    }
 }

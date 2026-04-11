@@ -108,7 +108,8 @@ func deletingFinalShelfCreatesEmptyReplacement() throws {
         snapshot: AppSnapshot(sessions: [session], recentDestinations: [])
     )
 
-    viewModel.selectedItemIDs = [item.id]
+    let currentItemID = try #require(viewModel.selectedSession.items.first?.id)
+    viewModel.selectedItemIDs = [currentItemID]
     viewModel.deleteShelf(sessionID: session.id)
 
     #expect(viewModel.sessions.count == 1)
@@ -170,6 +171,49 @@ func reloadFromStoreAppliesExternalIngest() throws {
 
     #expect(viewModel.selectedSessionID == second.id)
     #expect(viewModel.selectedSession.items.contains(where: { $0.url == incomingURL }))
+}
+
+@MainActor
+@Test("confirming a stale preview requires rerunning the preview")
+func stalePendingPreviewIsRejected() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let item = try makeItem(in: directory, named: "draft.txt")
+    let session = ShelfSession(title: "Inbox", items: [item])
+    let (viewModel, _) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [session], recentDestinations: [])
+    )
+
+    let currentItemID = try #require(viewModel.selectedSession.items.first?.id)
+    viewModel.selectedItemIDs = [currentItemID]
+    viewModel.previewRename()
+    #expect(viewModel.pendingPreview != nil)
+
+    viewModel.clearShelf()
+    viewModel.confirmPendingPreview()
+
+    #expect(viewModel.pendingPreview == nil)
+    #expect(viewModel.errorMessage?.contains("Run the preview again") == true)
+}
+
+@MainActor
+@Test("blank shelf title commits back to the current title")
+func blankShelfTitleFallsBackToCurrentTitle() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let session = ShelfSession(title: "Receipts")
+    let (viewModel, _) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [session], recentDestinations: [])
+    )
+
+    let resolvedTitle = viewModel.renameSelectedShelfTitle("   ")
+
+    #expect(resolvedTitle == "Receipts")
+    #expect(viewModel.selectedSession.title == "Receipts")
 }
 
 private func makeTemporaryDirectory() -> URL {

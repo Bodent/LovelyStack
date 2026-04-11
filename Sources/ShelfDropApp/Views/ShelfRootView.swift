@@ -59,7 +59,11 @@ struct ShelfRootView: View {
             }
         }
         .sheet(item: $viewModel.pendingPreview) { pending in
-            ActionPreviewSheet(pending: pending)
+            ActionPreviewSheet(
+                pending: pending,
+                onCancel: viewModel.dismissPreview,
+                onConfirm: viewModel.confirmPendingPreview
+            )
         }
         .alert("Action Error", isPresented: Binding(get: {
             viewModel.errorMessage != nil
@@ -230,6 +234,7 @@ private struct SessionsSidebar: View {
     @ObservedObject var viewModel: ShelfViewModel
     @Binding var renameShelfTitle: String
     @Binding var pendingShelfDeletion: PendingShelfDeletion?
+    @FocusState private var isEditingShelfTitle: Bool
 
     var body: some View {
         List(selection: Binding(
@@ -271,6 +276,7 @@ private struct SessionsSidebar: View {
                     set: { renameShelfTitle = $0 }
                 ))
                 .textFieldStyle(.roundedBorder)
+                .focused($isEditingShelfTitle)
                 .onSubmit {
                     renameShelfTitle = viewModel.renameSelectedShelfTitle(renameShelfTitle)
                 }
@@ -293,6 +299,11 @@ private struct SessionsSidebar: View {
         }
         .onChange(of: viewModel.selectedSessionID) {
             renameShelfTitle = viewModel.selectedSession.title
+        }
+        .onChange(of: isEditingShelfTitle) {
+            if !isEditingShelfTitle {
+                renameShelfTitle = viewModel.renameSelectedShelfTitle(renameShelfTitle)
+            }
         }
     }
 
@@ -838,14 +849,7 @@ private struct InspectorPanel: View {
             }
 
             inspectorLabeledRow("Max Size (px)") {
-                TextField(
-                    "",
-                    value: Binding(
-                        get: { viewModel.imageTransformPlan.maxPixelSize ?? 2048 },
-                        set: { viewModel.imageTransformPlan.maxPixelSize = $0 }
-                    ),
-                    format: .number
-                )
+                TextField("", text: maxPixelSizeTextBinding, prompt: Text("Original size"))
             }
 
             actionButton("Convert Images…", enabled: viewModel.selectedItems.contains(where: \.isImage)) {
@@ -900,5 +904,17 @@ private struct InspectorPanel: View {
         Button(title, action: action)
             .disabled(!enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var maxPixelSizeTextBinding: Binding<String> {
+        Binding(
+            get: {
+                viewModel.imageTransformPlan.maxPixelSize.map(String.init) ?? ""
+            },
+            set: { newValue in
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                viewModel.imageTransformPlan.maxPixelSize = Int(trimmed)
+            }
+        )
     }
 }

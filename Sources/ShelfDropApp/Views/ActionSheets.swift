@@ -3,6 +3,8 @@ import SwiftUI
 
 struct ActionPreviewSheet: View {
     let pending: PendingPreview
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -59,11 +61,11 @@ struct ActionPreviewSheet: View {
 
             HStack {
                 Button("Cancel", role: .cancel) {
-                    AppContainer.shared.model.dismissPreview()
+                    onCancel()
                 }
                 Spacer()
                 Button("Run Batch") {
-                    pending.onConfirm()
+                    onConfirm()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(pending.preview.hasBlockingIssues)
