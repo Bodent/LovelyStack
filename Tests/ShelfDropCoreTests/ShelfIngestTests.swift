@@ -41,7 +41,7 @@ func shelfIngestAddsToRememberedShelf() throws {
     #expect(result.targetSessionID == second.id)
     #expect(result.addedCount == 1)
     #expect(snapshot.selectedSessionID == second.id)
-    #expect(snapshot.sessions[1].items.contains(where: { $0.url == incomingURL }))
+    #expect(snapshot.sessions[1].items.contains(where: { testFileURLsMatch($0.url, incomingURL) }))
 }
 
 @Test("ingest falls back when the remembered shelf no longer exists")
@@ -108,8 +108,8 @@ func shelfIngestAcceptsFilesAndFolders() throws {
     let result = try ingest.add(urls: [fileURL, folderURL])
 
     #expect(result.addedCount == 2)
-    #expect(result.addedItems.contains(where: { $0.url == fileURL && !$0.isDirectory }))
-    #expect(result.addedItems.contains(where: { $0.url == folderURL && $0.isDirectory }))
+    #expect(result.addedItems.contains(where: { testFileURLsMatch($0.url, fileURL) && !$0.isDirectory }))
+    #expect(result.addedItems.contains(where: { testFileURLsMatch($0.url, folderURL) && $0.isDirectory }))
 }
 
 private func makeTemporaryDirectory() -> URL {

@@ -42,13 +42,19 @@ final class ShelfViewModel: ObservableObject {
     @Published var review: BatchPreview = .init(title: "Review", changes: [], issues: [], duplicateGroups: [])
     @Published var pendingPreview: PendingPreview?
     @Published var errorMessage: String?
-    @Published var searchText = ""
+    @Published var searchText = "" {
+        didSet {
+            rebuildVisibleItems()
+        }
+    }
     @Published var renamePattern = RenamePattern()
     @Published var metadataRequest = MetadataEditRequest()
     @Published var imageTransformPlan = ImageTransformPlan()
     @Published var archiveStrategy: ArchiveStrategy = .createdMonth
     @Published var isBusy = false
+    @Published private(set) var visibleItems: [ShelfItem] = []
     private(set) var loadWarning: String?
+    private var selectedSessionSearchIndex = [UUID: String]()
 
     private let store: ShelfStore
     private let catalog: FileCatalogService
@@ -75,6 +81,7 @@ final class ShelfViewModel: ObservableObject {
         if loadResult.warning == nil {
             persist()
         }
+        rebuildVisibleItems()
         recalculateReview()
     }
 
@@ -85,18 +92,6 @@ final class ShelfViewModel: ObservableObject {
     var selectedSession: ShelfSession {
         get { sessions[selectedSessionIndex] }
         set { sessions[selectedSessionIndex] = newValue }
-    }
-
-    var visibleItems: [ShelfItem] {
-        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return selectedSession.items
-        }
-        let query = searchText.localizedLowercase
-        return selectedSession.items.filter {
-            $0.displayName.localizedLowercase.contains(query) ||
-            $0.kindDescription.localizedLowercase.contains(query) ||
-            $0.tags.joined(separator: " ").localizedLowercase.contains(query)
-        }
     }
 
     var selectedItems: [ShelfItem] {
@@ -118,6 +113,7 @@ final class ShelfViewModel: ObservableObject {
         selectedSessionID = sessions[0].id
         selectedItemIDs.removeAll()
         persist()
+        rebuildVisibleItems()
         recalculateReview()
     }
 
@@ -133,6 +129,7 @@ final class ShelfViewModel: ObservableObject {
             selectedSessionID = replacement.id
             selectedItemIDs.removeAll()
             persist()
+            rebuildVisibleItems()
             recalculateReview()
             return
         }
@@ -144,6 +141,7 @@ final class ShelfViewModel: ObservableObject {
         }
 
         persist()
+        rebuildVisibleItems()
         recalculateReview()
     }
 
@@ -174,6 +172,7 @@ final class ShelfViewModel: ObservableObject {
         selectedSessionID = sessionID
         selectedItemIDs.removeAll()
         persist()
+        rebuildVisibleItems()
         recalculateReview()
     }
 
@@ -184,6 +183,7 @@ final class ShelfViewModel: ObservableObject {
             guard !result.addedItems.isEmpty else { return }
             applySnapshot(result.snapshot, refreshItems: false, preserveSelectedItems: false)
             selectedItemIDs = Set(result.addedItems.map(\.id))
+            rebuildVisibleItems()
             recalculateReview()
         } catch {
             errorMessage = error.localizedDescription
@@ -196,6 +196,7 @@ final class ShelfViewModel: ObservableObject {
         selectedSession.updatedAt = Date()
         selectedItemIDs.removeAll()
         persist()
+        rebuildVisibleItems()
         recalculateReview()
     }
 
@@ -204,6 +205,7 @@ final class ShelfViewModel: ObservableObject {
         selectedSession.updatedAt = Date()
         selectedItemIDs.removeAll()
         persist()
+        rebuildVisibleItems()
         recalculateReview()
     }
 
@@ -466,7 +468,10 @@ final class ShelfViewModel: ObservableObject {
                 updated.url = newURL
                 return catalog.refresh(item: updated) ?? updated
             }
-            return catalog.refresh(item: item) ?? item
+            if mutation.refreshedItemIDs.contains(item.id) {
+                return catalog.refresh(item: item) ?? item
+            }
+            return item
         }
 
         let additions = catalog.makeShelfItems(urls: mutation.createdURLs + mutation.restoredURLs)
@@ -478,6 +483,7 @@ final class ShelfViewModel: ObservableObject {
         selectedSession.updatedAt = Date()
         selectedItemIDs.subtract(mutation.removedItemIDs)
         persist()
+        rebuildVisibleItems()
         recalculateReview()
     }
 
@@ -504,6 +510,7 @@ final class ShelfViewModel: ObservableObject {
             selectedItemIDs.removeAll()
         }
 
+        rebuildVisibleItems()
         recalculateReview()
     }
 
@@ -559,6 +566,33 @@ final class ShelfViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func rebuildVisibleItems() {
+        let items = selectedSession.items
+        selectedSessionSearchIndex = Dictionary(uniqueKeysWithValues: items.map { item in
+            (item.id, searchableText(for: item))
+        })
+
+        let query = normalizedSearchQuery(searchText)
+        guard !query.isEmpty else {
+            visibleItems = items
+            return
+        }
+
+        visibleItems = items.filter { item in
+            selectedSessionSearchIndex[item.id]?.contains(query) == true
+        }
+    }
+
+    private func searchableText(for item: ShelfItem) -> String {
+        ([item.displayName, item.kindDescription] + item.tags)
+            .joined(separator: " ")
+            .localizedLowercase
+    }
+
+    private func normalizedSearchQuery(_ query: String) -> String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).localizedLowercase
     }
 }
 

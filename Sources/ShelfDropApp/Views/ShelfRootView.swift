@@ -472,7 +472,9 @@ private struct DropShelfView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .dropDestination(for: URL.self) { urls, _ in
-            viewModel.addFiles(urls: urls)
+            let acceptedURLs = urls.filter(\.isFileURL)
+            guard !acceptedURLs.isEmpty else { return false }
+            viewModel.addFiles(urls: acceptedURLs)
             return true
         } isTargeted: { targeted in
             withAnimation(.easeInOut(duration: 0.2)) {

@@ -170,7 +170,7 @@ func reloadFromStoreAppliesExternalIngest() throws {
     viewModel.reloadFromStore()
 
     #expect(viewModel.selectedSessionID == second.id)
-    #expect(viewModel.selectedSession.items.contains(where: { $0.url == incomingURL }))
+    #expect(viewModel.selectedSession.items.contains(where: { testFileURLsMatch($0.url, incomingURL) }))
 }
 
 @MainActor

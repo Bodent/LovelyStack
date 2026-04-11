@@ -111,8 +111,11 @@ public final class FileCatalogService {
     }
 
     public func refresh(item: ShelfItem) -> ShelfItem? {
-        loadItem(from: item.url, bookmarkData: nil, allowFallback: false)
-            ?? loadItem(from: item.url, bookmarkData: item.bookmarkData, allowFallback: false)
+        if let bookmarkData = item.bookmarkData {
+            return loadItem(from: item.url, bookmarkData: bookmarkData, allowFallback: false)
+                ?? loadItem(from: item.url, bookmarkData: nil, allowFallback: false)
+        }
+        return loadItem(from: item.url, bookmarkData: nil, allowFallback: false)
     }
 
     private func loadItem(from url: URL, bookmarkData: Data?, allowFallback: Bool) -> ShelfItem? {
@@ -198,6 +201,8 @@ public final class FileCatalogService {
 }
 
 public final class DuplicateDetectionService {
+    private let fingerprintCache = NSCache<NSString, NSString>()
+
     public init() {}
 
     public struct ScanResult: Hashable {
@@ -249,7 +254,12 @@ public final class DuplicateDetectionService {
     }
 
     private func fingerprint(for item: ShelfItem) throws -> String {
-        try withAccessibleURL(for: item) { resolvedURL in
+        let cacheKey = fingerprintCacheKey(for: item) as NSString
+        if let cached = fingerprintCache.object(forKey: cacheKey) {
+            return cached as String
+        }
+
+        return try withAccessibleURL(for: item) { resolvedURL in
             let handle = try FileHandle(forReadingFrom: resolvedURL)
             defer { try? handle.close() }
 
@@ -264,8 +274,15 @@ public final class DuplicateDetectionService {
             }) {}
 
             let digest = hasher.finalize()
-            return digest.map { String(format: "%02x", $0) }.joined()
+            let fingerprint = digest.map { String(format: "%02x", $0) }.joined()
+            fingerprintCache.setObject(fingerprint as NSString, forKey: cacheKey)
+            return fingerprint
         }
+    }
+
+    private func fingerprintCacheKey(for item: ShelfItem) -> String {
+        let modificationStamp = item.modifiedAt?.timeIntervalSinceReferenceDate ?? 0
+        return "\(item.url.standardizedFileURL.resolvingSymlinksInPath().path)|\(item.byteSize)|\(modificationStamp)"
     }
 }
 
@@ -430,17 +447,37 @@ public final class FinderMetadataService {
     }
 
     func appleScriptStringLiteral(_ value: String) -> String {
-        let normalized = value
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        let segments = normalized
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .map { segment in
-                let escaped = String(segment)
-                    .replacingOccurrences(of: "\\", with: "\\\\")
-                    .replacingOccurrences(of: "\"", with: "\\\"")
-                return "\"\(escaped)\""
+        var segments = [String]()
+        var currentSegment = String()
+        currentSegment.reserveCapacity(value.count)
+
+        var previousWasCarriageReturn = false
+        for scalar in value.unicodeScalars {
+            if previousWasCarriageReturn, scalar == "\n" {
+                previousWasCarriageReturn = false
+                continue
             }
+
+            previousWasCarriageReturn = false
+
+            switch scalar {
+            case "\r":
+                segments.append("\"\(currentSegment)\"")
+                currentSegment.removeAll(keepingCapacity: true)
+                previousWasCarriageReturn = true
+            case "\n":
+                segments.append("\"\(currentSegment)\"")
+                currentSegment.removeAll(keepingCapacity: true)
+            case "\\":
+                currentSegment.append("\\\\")
+            case "\"":
+                currentSegment.append("\\\"")
+            default:
+                currentSegment.unicodeScalars.append(scalar)
+            }
+        }
+
+        segments.append("\"\(currentSegment)\"")
 
         return segments.isEmpty ? "\"\"" : segments.joined(separator: " & linefeed & ")
     }
@@ -592,6 +629,7 @@ extension ImageTransformService: @unchecked Sendable {}
 
 public actor FileActionService {
     private let maxUndoBatches = 20
+    private let maxUndoSteps = 1_000
     nonisolated(unsafe) private let fileManager: FileManager
     nonisolated private let preflightService: FilePreflightService
     nonisolated private let metadataService: FinderMetadataService
@@ -622,20 +660,12 @@ public actor FileActionService {
     }
 
     public nonisolated func previewMove(items: [ShelfItem], to destination: URL, mode: FileOperationMode) -> BatchPreview {
-        makeRelocationPreview(
+        let action = RelocationBatchAction(
             title: mode == .move ? "Move Preview" : "Copy Preview",
+            mutationTitle: mode == .move ? "Moved files" : "Copied files",
             items: items,
             destination: { destination.appendingPathComponent($0.url.lastPathComponent) },
-            summary: { item, _ in "\(mode == .move ? "Move" : "Copy") \(item.displayName)" }
-        )
-    }
-
-    public func executeMove(items: [ShelfItem], to destination: URL, mode: FileOperationMode) throws -> BatchMutation {
-        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
-        return try executeRelocation(
-            title: mode == .move ? "Moved files" : "Copied files",
-            items: items,
-            destination: { destination.appendingPathComponent($0.url.lastPathComponent) },
+            summary: { item, _ in "\(mode == .move ? "Move" : "Copy") \(item.displayName)" },
             createParentDirectories: false,
             conflictError: { item, _ in
                 NSError(
@@ -646,31 +676,69 @@ public actor FileActionService {
             },
             operation: mode == .move ? .move : .copy
         )
+        return preview(action)
+    }
+
+    public func executeMove(items: [ShelfItem], to destination: URL, mode: FileOperationMode) throws -> BatchMutation {
+        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+        let action = RelocationBatchAction(
+            title: mode == .move ? "Move Preview" : "Copy Preview",
+            mutationTitle: mode == .move ? "Moved files" : "Copied files",
+            items: items,
+            destination: { destination.appendingPathComponent($0.url.lastPathComponent) },
+            summary: { item, _ in "\(mode == .move ? "Move" : "Copy") \(item.displayName)" },
+            createParentDirectories: false,
+            conflictError: { item, _ in
+                NSError(
+                    domain: "ShelfDrop.Move",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Destination already exists for \(item.displayName)."]
+                )
+            },
+            operation: mode == .move ? .move : .copy
+        )
+        return try execute(action)
     }
 
     public nonisolated func previewArchive(items: [ShelfItem], root: URL, strategy: ArchiveStrategy) -> BatchPreview {
-        makeRelocationPreview(
-            title: "Archive Preview",
-            items: items,
-            destination: { archiveDestination(for: $0, root: root, strategy: strategy) },
-            summary: { item, _ in "Archive \(item.displayName)" }
+        preview(
+            RelocationBatchAction(
+                title: "Archive Preview",
+                mutationTitle: "Archived files",
+                items: items,
+                destination: { [self] in archiveDestination(for: $0, root: root, strategy: strategy) },
+                summary: { item, _ in "Archive \(item.displayName)" },
+                createParentDirectories: true,
+                conflictError: { item, _ in
+                    NSError(
+                        domain: "ShelfDrop.Archive",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Archive destination already exists for \(item.displayName)."]
+                    )
+                },
+                operation: .move
+            )
         )
     }
 
     public func executeArchive(items: [ShelfItem], root: URL, strategy: ArchiveStrategy) throws -> BatchMutation {
-        return try executeRelocation(
-            title: "Archived files",
-            items: items,
-            destination: { archiveDestination(for: $0, root: root, strategy: strategy) },
-            createParentDirectories: true,
-            conflictError: { item, _ in
-                NSError(
-                    domain: "ShelfDrop.Archive",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Archive destination already exists for \(item.displayName)."]
-                )
-            },
-            operation: .move
+        try execute(
+            RelocationBatchAction(
+                title: "Archive Preview",
+                mutationTitle: "Archived files",
+                items: items,
+                destination: { [self] in archiveDestination(for: $0, root: root, strategy: strategy) },
+                summary: { item, _ in "Archive \(item.displayName)" },
+                createParentDirectories: true,
+                conflictError: { item, _ in
+                    NSError(
+                        domain: "ShelfDrop.Archive",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Archive destination already exists for \(item.displayName)."]
+                    )
+                },
+                operation: .move
+            )
         )
     }
 
@@ -692,12 +760,12 @@ public actor FileActionService {
     public func executeRename(items: [ShelfItem], pattern: RenamePattern) throws -> BatchMutation {
         try ensureUniqueItemIDs(in: items)
         let previews = RenamePlanner.previews(for: items, pattern: pattern)
-        let itemsByID = makeItemMap(for: items)
-        var mutation = BatchMutation(title: "Renamed files", refreshedItemIDs: Set(items.map(\.id)))
-        var undoSteps = [UndoStep]()
-
-        for preview in previews {
-            guard let item = itemsByID[preview.itemID] else { continue }
+        return try executeItemBatch(
+            title: "Renamed files",
+            items: items,
+            refreshedItemIDs: Set(items.map(\.id))
+        ) { item, mutation in
+            guard let preview = previews.first(where: { $0.itemID == item.id }) else { return nil }
             guard !fileManager.fileExists(atPath: preview.destinationURL.path) || preview.destinationURL == preview.sourceURL else {
                 throw NSError(domain: "ShelfDrop.Rename", code: 1, userInfo: [NSLocalizedDescriptionKey: "Destination already exists for \(preview.newFilename)."])
             }
@@ -706,12 +774,9 @@ public actor FileActionService {
                 try fileManager.moveItem(at: sourceURL, to: dest)
                 return (dest, .move(from: sourceURL, to: dest))
             }
-            mutation.updatedItemLocations[preview.itemID] = destinationURL
-            undoSteps.append(step)
+            mutation.updatedItemLocations[item.id] = destinationURL
+            return step
         }
-
-        recordUndoBatch(title: mutation.title, steps: undoSteps)
-        return mutation
     }
 
     public nonisolated func previewMetadata(items: [ShelfItem], request: MetadataEditRequest) -> BatchPreview {
@@ -731,17 +796,17 @@ public actor FileActionService {
 
     public func executeMetadata(items: [ShelfItem], request: MetadataEditRequest) throws -> BatchMutation {
         try ensureUniqueItemIDs(in: items)
-        var undoSteps = [UndoStep]()
-        for item in items {
-            let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
+        return try executeItemBatch(
+            title: "Updated metadata",
+            items: items,
+            refreshedItemIDs: Set(items.map(\.id))
+        ) { item, _ in
+            try withAccessibleURL(for: item) { sourceURL in
                 let snapshot = try metadataService.snapshot(for: sourceURL)
                 try metadataService.apply(request, to: sourceURL)
                 return .restoreMetadata(url: sourceURL, snapshot: snapshot)
             }
-            undoSteps.append(step)
         }
-        recordUndoBatch(title: "Updated metadata", steps: undoSteps)
-        return BatchMutation(title: "Updated metadata", refreshedItemIDs: Set(items.map(\.id)))
     }
 
     public nonisolated func previewSafeDelete(items: [ShelfItem]) -> BatchPreview {
@@ -763,26 +828,23 @@ public actor FileActionService {
     public func executeSafeDelete(items: [ShelfItem]) throws -> BatchMutation {
         try ensureUniqueItemIDs(in: items)
         try fileManager.createDirectory(at: trashDirectory, withIntermediateDirectories: true)
-        var mutation = BatchMutation(
-            title: "Safely deleted files",
-            refreshedItemIDs: Set(items.map(\.id))
-        )
-        var undoSteps = [UndoStep]()
         let batchDirectory = trashDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         let plans = safeDeletePlans(for: items, batchDirectory: batchDirectory)
         try fileManager.createDirectory(at: batchDirectory, withIntermediateDirectories: true)
 
-        for plan in plans {
-            let step: UndoStep = try withAccessibleURL(for: plan.item) { sourceURL in
+        return try executeItemBatch(
+            title: "Safely deleted files",
+            items: items,
+            refreshedItemIDs: Set(items.map(\.id))
+        ) { item, mutation in
+            guard let plan = plans.first(where: { $0.item.id == item.id }) else { return nil }
+            let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
                 try fileManager.moveItem(at: sourceURL, to: plan.trashURL)
                 return .restoreFromSafeDelete(original: sourceURL, trashURL: plan.trashURL, batchDirectory: batchDirectory)
             }
-            mutation.removedItemIDs.insert(plan.item.id)
-            undoSteps.append(step)
+            mutation.removedItemIDs.insert(item.id)
+            return step
         }
-
-        recordUndoBatch(title: mutation.title, steps: undoSteps)
-        return mutation
     }
 
     public nonisolated func previewZip(items: [ShelfItem], destinationDirectory: URL, baseName: String) -> BatchPreview {
@@ -938,10 +1000,14 @@ public actor FileActionService {
 
     private func recordUndoBatch(title: String, steps: [UndoStep]) {
         undoBatches.append(.init(title: title, steps: steps))
-        if undoBatches.count > maxUndoBatches {
-            let evictedBatches = undoBatches.prefix(undoBatches.count - maxUndoBatches)
-            evictedBatches.forEach(cleanupDiscardedUndoBatchResources)
-            undoBatches.removeFirst(undoBatches.count - maxUndoBatches)
+        var discardedBatches = [UndoBatch]()
+
+        while undoBatches.count > maxUndoBatches || undoBatches.totalStepCount > maxUndoSteps {
+            discardedBatches.append(undoBatches.removeFirst())
+        }
+
+        for batch in discardedBatches {
+            cleanupDiscardedUndoBatchResources(batch)
         }
     }
 
@@ -988,55 +1054,44 @@ public actor FileActionService {
         )
     }
 
-    nonisolated private func makeRelocationPreview(
-        title: String,
-        items: [ShelfItem],
-        destination: (ShelfItem) -> URL,
-        summary: (ShelfItem, URL) -> String
-    ) -> BatchPreview {
-        let validationIssues = validationIssues(for: items)
-        let plannedDestinations = validationIssues.isEmpty ? makeDestinationMap(for: items, destination: destination) : [:]
-        let changes = items.map { item in
-            let outputURL = destination(item)
+    nonisolated private func preview(_ action: RelocationBatchAction) -> BatchPreview {
+        let validationIssues = validationIssues(for: action.items)
+        let plannedDestinations = validationIssues.isEmpty ? makeDestinationMap(for: action.items, destination: action.destination) : [:]
+        let changes = action.items.map { item in
+            let outputURL = action.destination(item)
             return PlannedChange(
                 itemID: item.id,
                 sourceURL: item.url,
                 destinationURL: outputURL,
-                summary: summary(item, outputURL)
+                summary: action.summary(item, outputURL)
             )
         }
         return buildPreview(
-            title: title,
+            title: action.title,
             changes: changes,
-            reviewItems: items,
+            reviewItems: action.items,
             plannedDestinations: plannedDestinations,
             extraIssues: validationIssues
         )
     }
 
-    private func executeRelocation(
-        title: String,
-        items: [ShelfItem],
-        destination: (ShelfItem) -> URL,
-        createParentDirectories: Bool,
-        conflictError: (ShelfItem, URL) -> NSError,
-        operation: RelocationOperation
-    ) throws -> BatchMutation {
-        try ensureUniqueItemIDs(in: items)
-        var mutation = BatchMutation(title: title, refreshedItemIDs: Set(items.map(\.id)))
-        var undoSteps = [UndoStep]()
-
-        for item in items {
-            let outputURL = destination(item)
-            if createParentDirectories {
+    private func execute(_ action: RelocationBatchAction) throws -> BatchMutation {
+        try ensureUniqueItemIDs(in: action.items)
+        return try executeItemBatch(
+            title: action.mutationTitle,
+            items: action.items,
+            refreshedItemIDs: Set(action.items.map(\.id))
+        ) { item, mutation in
+            let outputURL = action.destination(item)
+            if action.createParentDirectories {
                 try fileManager.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             }
             guard !fileManager.fileExists(atPath: outputURL.path) else {
-                throw conflictError(item, outputURL)
+                throw action.conflictError(item, outputURL)
             }
 
             let step: UndoStep = try withAccessibleURL(for: item) { sourceURL in
-                switch operation {
+                switch action.operation {
                 case .move:
                     try fileManager.moveItem(at: sourceURL, to: outputURL)
                     return .move(from: sourceURL, to: outputURL)
@@ -1046,13 +1101,29 @@ public actor FileActionService {
                 }
             }
 
-            switch operation {
+            switch action.operation {
             case .move:
                 mutation.updatedItemLocations[item.id] = outputURL
             case .copy:
                 mutation.createdURLs.append(outputURL)
             }
-            undoSteps.append(step)
+            return step
+        }
+    }
+
+    private func executeItemBatch(
+        title: String,
+        items: [ShelfItem],
+        refreshedItemIDs: Set<UUID> = [],
+        body: (ShelfItem, inout BatchMutation) throws -> UndoStep?
+    ) throws -> BatchMutation {
+        var mutation = BatchMutation(title: title, refreshedItemIDs: refreshedItemIDs)
+        var undoSteps = [UndoStep]()
+
+        for item in items {
+            if let step = try body(item, &mutation) {
+                undoSteps.append(step)
+            }
         }
 
         recordUndoBatch(title: mutation.title, steps: undoSteps)
@@ -1153,15 +1224,33 @@ public actor FileActionService {
         return originalName
     }
 
-    private enum RelocationOperation {
-        case move
-        case copy
-    }
+}
+
+private struct RelocationBatchAction {
+    let title: String
+    let mutationTitle: String
+    let items: [ShelfItem]
+    let destination: (ShelfItem) -> URL
+    let summary: (ShelfItem, URL) -> String
+    let createParentDirectories: Bool
+    let conflictError: (ShelfItem, URL) -> NSError
+    let operation: RelocationOperation
+}
+
+private enum RelocationOperation {
+    case move
+    case copy
 }
 
 private struct UndoBatch: Sendable {
     let title: String
     let steps: [UndoStep]
+}
+
+private extension Array where Element == UndoBatch {
+    var totalStepCount: Int {
+        reduce(0) { $0 + $1.steps.count }
+    }
 }
 
 private struct SafeDeletePlanEntry: Sendable {

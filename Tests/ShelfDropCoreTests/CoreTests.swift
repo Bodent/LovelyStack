@@ -399,6 +399,15 @@ func finderMetadataEscapesMultilineAppleScriptStrings() {
     #expect(literal.contains("\\\"2\\\""))
 }
 
+@Test("finder metadata normalizes CRLF and escapes backslashes in one AppleScript literal")
+func finderMetadataNormalizesLineEndingsAndBackslashes() {
+    let service = FinderMetadataService()
+
+    let literal = service.appleScriptStringLiteral("Line 1\r\nC:\\Temp\rLine 3")
+
+    #expect(literal == "\"Line 1\" & linefeed & \"C:\\\\Temp\" & linefeed & \"Line 3\"")
+}
+
 @Test("metadata batch surfaces Finder snapshot failures")
 func metadataBatchPropagatesFinderSnapshotFailure() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -636,6 +645,39 @@ func undoHistoryIsCapped() async throws {
     }
 
     #expect(undoCount == 20)
+}
+
+@Test("undo history is bounded by total recorded steps, not only batch count")
+func undoHistoryIsBoundedByStepCount() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let sourceDirectory = directory.appendingPathComponent("source", isDirectory: true)
+    try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)
+
+    var sourceURLs = [URL]()
+    for index in 0..<350 {
+        let fileURL = sourceDirectory.appendingPathComponent("sample-\(index).txt")
+        try Data("content-\(index)".utf8).write(to: fileURL)
+        sourceURLs.append(fileURL)
+    }
+
+    let catalog = FileCatalogService()
+    let items = catalog.makeShelfItems(urls: sourceURLs)
+    let actions = FileActionService(baseDirectory: directory)
+
+    for index in 0..<3 {
+        let destination = directory.appendingPathComponent("copies-\(index)", isDirectory: true)
+        _ = try await actions.executeMove(items: items, to: destination, mode: .copy)
+    }
+
+    var undoCount = 0
+    while let _ = try await actions.undoLastBatch() {
+        undoCount += 1
+    }
+
+    #expect(undoCount == 2)
 }
 
 private func makePNG(at url: URL, size: CGSize = CGSize(width: 2, height: 2)) throws {

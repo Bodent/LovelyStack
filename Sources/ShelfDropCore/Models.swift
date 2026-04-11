@@ -176,6 +176,8 @@ public enum RenameSeparator: String, Codable, CaseIterable, Identifiable, Sendab
 
     public var id: String { rawValue }
 
+    public var joiner: String { rawValue }
+
     public var displayName: String {
         switch self {
         case .space: "Space"

@@ -25,10 +25,16 @@ private func makeImageThumbnailData(at url: URL, size: CGSize) -> Data? {
 
 @MainActor
 private enum ThumbnailRepository {
-    private static let cache = NSCache<NSString, NSImage>()
+    private static let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 400
+        cache.totalCostLimit = 96 * 1024 * 1024
+        return cache
+    }()
 
     static func cacheKey(for url: URL, size: CGSize) -> String {
-        "\(url.path)#\(Int(size.width.rounded()))x\(Int(size.height.rounded()))"
+        let normalizedURL = url.standardizedFileURL.resolvingSymlinksInPath()
+        return "\(normalizedURL.path)#\(Int(size.width.rounded()))x\(Int(size.height.rounded()))"
     }
 
     static func cachedImage(for url: URL, size: CGSize) -> NSImage? {
@@ -48,7 +54,7 @@ private enum ThumbnailRepository {
 
         guard isImageURL(url) else {
             let image = fallbackIcon(for: url, size: size)
-            cache.setObject(image, forKey: key as NSString)
+            cache.setObject(image, forKey: key as NSString, cost: cacheCost(for: image))
             completion(image)
             return
         }
@@ -57,7 +63,7 @@ private enum ThumbnailRepository {
             let thumbnailData = makeImageThumbnailData(at: url, size: size)
             await MainActor.run {
                 let image = thumbnailData.flatMap(NSImage.init(data:)) ?? fallbackIcon(for: url, size: size)
-                cache.setObject(image, forKey: key as NSString)
+                cache.setObject(image, forKey: key as NSString, cost: cacheCost(for: image))
                 completion(image)
             }
         }
@@ -72,6 +78,12 @@ private enum ThumbnailRepository {
         let icon = NSWorkspace.shared.icon(forFile: url.path)
         icon.size = size
         return icon
+    }
+
+    private static func cacheCost(for image: NSImage) -> Int {
+        let pixelWidth = max(Int(image.size.width.rounded() * 2), 1)
+        let pixelHeight = max(Int(image.size.height.rounded() * 2), 1)
+        return pixelWidth * pixelHeight * 4
     }
 }
 

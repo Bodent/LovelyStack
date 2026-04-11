@@ -34,9 +34,12 @@ private struct MenuBarExtraView: View {
             }
 
             Button("Add Files…") {
-                let urls = FolderPicker.chooseFiles()
-                viewModel.addFiles(urls: urls)
                 openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+                DispatchQueue.main.async {
+                    let urls = FolderPicker.chooseFiles()
+                    viewModel.addFiles(urls: urls)
+                }
             }
 
             Divider()
@@ -63,35 +66,52 @@ private struct MenuBarExtraView: View {
 }
 
 private struct WindowChromeConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async {
-            configureWindow(for: view)
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> WindowChromeTrackingView {
+        let view = WindowChromeTrackingView(frame: .zero)
+        view.onWindowAvailable = { window in
+            context.coordinator.configure(window)
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            configureWindow(for: nsView)
-        }
+    func updateNSView(_ nsView: WindowChromeTrackingView, context: Context) {
+        context.coordinator.configure(nsView.window)
     }
 
-    private func configureWindow(for view: NSView) {
-        guard !ProcessInfo.processInfo.isRunningTests else { return }
-        guard let window = view.window else { return }
+    final class Coordinator {
+        private weak var configuredWindow: NSWindow?
 
-        window.title = "ShelfDrop"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
-        window.backgroundColor = .clear
-        window.isOpaque = false
-        window.styleMask.insert(.fullSizeContentView)
+        func configure(_ window: NSWindow?) {
+            guard !ProcessInfo.processInfo.isRunningTests else { return }
+            guard let window else { return }
+            guard configuredWindow !== window else { return }
 
-        if #available(macOS 11.0, *) {
-            window.titlebarSeparatorStyle = .none
+            configuredWindow = window
+            window.title = "ShelfDrop"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isMovableByWindowBackground = true
+            window.backgroundColor = .clear
+            window.isOpaque = false
+            window.styleMask.insert(.fullSizeContentView)
+
+            if #available(macOS 11.0, *) {
+                window.titlebarSeparatorStyle = .none
+            }
         }
+    }
+}
+
+private final class WindowChromeTrackingView: NSView {
+    var onWindowAvailable: ((NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindowAvailable?(window)
     }
 }
 

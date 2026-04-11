@@ -37,9 +37,9 @@ public enum RenamePlanner {
             }
 
             let joined = components
-                .joined(separator: pattern.separator.rawValue)
-                .replacingOccurrences(of: "\\s+", with: pattern.separator.rawValue, options: .regularExpression)
-                .trimmingCharacters(in: CharacterSet(charactersIn: pattern.separator.rawValue).union(.whitespacesAndNewlines))
+                .joined(separator: pattern.separator.joiner)
+                .replacingOccurrences(of: "\\s+", with: pattern.separator.joiner, options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet(charactersIn: pattern.separator.joiner).union(.whitespacesAndNewlines))
 
             let transformed = pattern.caseStyle == .title
                 ? joined
@@ -78,10 +78,10 @@ public enum RenamePlanner {
         }
 
         value = value
-            .replacingOccurrences(of: "[\\s]+", with: pattern.separator.rawValue, options: .regularExpression)
-            .replacingOccurrences(of: "[^A-Za-z0-9\\-_]+", with: pattern.separator.rawValue, options: .regularExpression)
+            .replacingOccurrences(of: "[\\s]+", with: pattern.separator.joiner, options: .regularExpression)
+            .replacingOccurrences(of: "[^A-Za-z0-9\\-_]+", with: pattern.separator.joiner, options: .regularExpression)
 
-        return value.trimmingCharacters(in: CharacterSet(charactersIn: pattern.separator.rawValue).union(.whitespacesAndNewlines))
+        return value.trimmingCharacters(in: CharacterSet(charactersIn: pattern.separator.joiner).union(.whitespacesAndNewlines))
     }
 
     private static func applyCaseStyle(_ value: String, style: RenameCaseStyle, separator: RenameSeparator) -> String {
@@ -93,7 +93,7 @@ public enum RenamePlanner {
             value
                 .split(whereSeparator: { $0 == "-" || $0 == "_" || $0 == " " })
                 .map { $0.capitalized }
-                .joined(separator: separator.rawValue)
+                .joined(separator: separator.joiner)
         }
     }
 
