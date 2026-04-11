@@ -11,12 +11,18 @@
 		53235FBD2875D64A2CC15345 /* ShelfDropCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; };
 		5D7D4899C9EE9801F5C38893 /* ShelfViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DCD5DF95EDCE0D97A6453F /* ShelfViewModelTests.swift */; };
 		6614CB9A152990D8D34C1C95 /* ShelfRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68672A1E72F866B7A319A231 /* ShelfRootView.swift */; };
+		6DF9194CB92D09AEA451CE7B /* ShelfIngestService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1877E320ECE5E3E4E03C6E99 /* ShelfIngestService.swift */; };
 		8050785D174A549F44618E50 /* ShelfDropCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		80D6111C6667D235066F3BCE /* RenamePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80309C7F8ADF648D5586A4DB /* RenamePlanner.swift */; };
 		92A7A9BF7E7C3ADF2E1CAD59 /* ShelfDropMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD274EBB7A1F1DBD812DBFE /* ShelfDropMain.swift */; };
+		93B6C5F69A9E24923C1393E9 /* ShelfExternalIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C018148CFEDA8161BC3BCB5F /* ShelfExternalIntegration.swift */; };
+		9EF4DE66DA1DF40C44FC35F1 /* ShelfIngestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC95A37C25E9C297C8601DB6 /* ShelfIngestTests.swift */; };
 		A4F269FF15C7C3A54025DC29 /* ShelfDropCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A76DF402ED02F35A9C9E0020 /* ShelfDropCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; };
 		A9EDB1654D9A8BB661619150 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E5EB56DA9626E13E36AF55 /* Models.swift */; };
 		B166C5E6D25EA353BFADAC00 /* ShelfDropCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; };
+		B1DAA71CE7A4FDF1DD212002 /* ShelfFinderActionRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E02B4B5D2F95FBCA84ECA87 /* ShelfFinderActionRequestHandler.swift */; };
+		B4D60CB9C63C624150E49649 /* ShelfDropFinderAction.appex in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = F681BEBEF56191E41547369A /* ShelfDropFinderAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B64660FEBB530C003256A398 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8086ED4B80DEB2BF968FD54D /* CoreTests.swift */; };
 		D2C4DE17C45B676ACEAD61E2 /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EEA0E655612D4281A13E1B /* Services.swift */; };
 		DA74FEA9E3C89D3A6E32E019 /* ActionSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5C0C7338173636CD23B96F0 /* ActionSheets.swift */; };
@@ -32,6 +38,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 229EB9B07B445165290D908B;
 			remoteInfo = ShelfDropCore;
+		};
+		41294DDCB7E8C0C1671E43A6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1BA22E3B920455D0B7227F1B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 57C848AECEDE1764E79C65B2;
+			remoteInfo = ShelfDropFinderAction;
 		};
 		599D1AD7517E9A5CC4CFDA41 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -54,6 +67,13 @@
 			remoteGlobalIDString = 229EB9B07B445165290D908B;
 			remoteInfo = ShelfDropCore;
 		};
+		AE9126F423F74E9A22BD2A9B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1BA22E3B920455D0B7227F1B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 229EB9B07B445165290D908B;
+			remoteInfo = ShelfDropCore;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -66,6 +86,17 @@
 				F50E2B03F0035AAA06FBA26E /* ShelfDropCore.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3245B62B91B1F06F382DE53B /* Embed Dependencies */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B4D60CB9C63C624150E49649 /* ShelfDropFinderAction.appex in Embed Dependencies */,
+			);
+			name = "Embed Dependencies";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		4AD2EF67B429ADCAC4CD6FBC /* Embed Frameworks */ = {
@@ -94,6 +125,7 @@
 
 /* Begin PBXFileReference section */
 		17A2BD217A74E338E318DD35 /* ShelfDropAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShelfDropAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1877E320ECE5E3E4E03C6E99 /* ShelfIngestService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfIngestService.swift; sourceTree = "<group>"; };
 		25800BD124E84EAD0F7824AB /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		25E5EB56DA9626E13E36AF55 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		68672A1E72F866B7A319A231 /* ShelfRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfRootView.swift; sourceTree = "<group>"; };
@@ -101,15 +133,27 @@
 		8086ED4B80DEB2BF968FD54D /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
 		9509FB42956892BE779EAA96 /* ShelfDropCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShelfDropCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9DD274EBB7A1F1DBD812DBFE /* ShelfDropMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfDropMain.swift; sourceTree = "<group>"; };
+		9E02B4B5D2F95FBCA84ECA87 /* ShelfFinderActionRequestHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfFinderActionRequestHandler.swift; sourceTree = "<group>"; };
 		A0EEA0E655612D4281A13E1B /* Services.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services.swift; sourceTree = "<group>"; };
 		A5C0C7338173636CD23B96F0 /* ActionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionSheets.swift; sourceTree = "<group>"; };
+		C018148CFEDA8161BC3BCB5F /* ShelfExternalIntegration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfExternalIntegration.swift; sourceTree = "<group>"; };
 		C9190E878A39F2409DDB63DF /* ShelfDropApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShelfDropApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DC95A37C25E9C297C8601DB6 /* ShelfIngestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfIngestTests.swift; sourceTree = "<group>"; };
 		EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ShelfDropCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		F1DCD5DF95EDCE0D97A6453F /* ShelfViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfViewModelTests.swift; sourceTree = "<group>"; };
+		F681BEBEF56191E41547369A /* ShelfDropFinderAction.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShelfDropFinderAction.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FD2BD3127EBB33BE4BC02D88 /* QuickLookSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookSupport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		0F860AB4474899DF4E579EDA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A76DF402ED02F35A9C9E0020 /* ShelfDropCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5067C0C96138E1C2CB0C1D44 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -143,6 +187,7 @@
 				25E5EB56DA9626E13E36AF55 /* Models.swift */,
 				80309C7F8ADF648D5586A4DB /* RenamePlanner.swift */,
 				A0EEA0E655612D4281A13E1B /* Services.swift */,
+				1877E320ECE5E3E4E03C6E99 /* ShelfIngestService.swift */,
 			);
 			path = ShelfDropCore;
 			sourceTree = "<group>";
@@ -155,11 +200,20 @@
 			path = ShelfDropAppTests;
 			sourceTree = "<group>";
 		};
+		588D4C48770F7FCECCD1706D /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+				96C53955F00ABE395BB93515 /* ShelfDropFinderAction */,
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
 		6717414BB4AC1740D0AD406B /* Support */ = {
 			isa = PBXGroup;
 			children = (
 				25800BD124E84EAD0F7824AB /* AppContainer.swift */,
 				FD2BD3127EBB33BE4BC02D88 /* QuickLookSupport.swift */,
+				C018148CFEDA8161BC3BCB5F /* ShelfExternalIntegration.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -171,6 +225,7 @@
 				17A2BD217A74E338E318DD35 /* ShelfDropAppTests.xctest */,
 				EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */,
 				9509FB42956892BE779EAA96 /* ShelfDropCoreTests.xctest */,
+				F681BEBEF56191E41547369A /* ShelfDropFinderAction.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -178,10 +233,19 @@
 		8D80FFEAD07960575A5AF78C = {
 			isa = PBXGroup;
 			children = (
+				588D4C48770F7FCECCD1706D /* Extensions */,
 				F805DDA6D517F03D547FD2E3 /* Sources */,
 				F8A303EFC6C46D53E75B9076 /* Tests */,
 				67201B76FBB295CB12084959 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		96C53955F00ABE395BB93515 /* ShelfDropFinderAction */ = {
+			isa = PBXGroup;
+			children = (
+				9E02B4B5D2F95FBCA84ECA87 /* ShelfFinderActionRequestHandler.swift */,
+			);
+			path = ShelfDropFinderAction;
 			sourceTree = "<group>";
 		};
 		B0E21F5218C219E1A94371CE /* Views */ = {
@@ -197,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				8086ED4B80DEB2BF968FD54D /* CoreTests.swift */,
+				DC95A37C25E9C297C8601DB6 /* ShelfIngestTests.swift */,
 			);
 			path = ShelfDropCoreTests;
 			sourceTree = "<group>";
@@ -270,6 +335,25 @@
 			productReference = 17A2BD217A74E338E318DD35 /* ShelfDropAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		57C848AECEDE1764E79C65B2 /* ShelfDropFinderAction */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6A214BF6EA5F065F14C026BD /* Build configuration list for PBXNativeTarget "ShelfDropFinderAction" */;
+			buildPhases = (
+				0353911FBE3A8234A68B7E13 /* Sources */,
+				0F860AB4474899DF4E579EDA /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				263B7169EE116609419391CA /* PBXTargetDependency */,
+			);
+			name = ShelfDropFinderAction;
+			packageProductDependencies = (
+			);
+			productName = ShelfDropFinderAction;
+			productReference = F681BEBEF56191E41547369A /* ShelfDropFinderAction.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		7FA70C8B137591D7913BB0C6 /* ShelfDropApp */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DC1A3FDA6437D6733E0514AB /* Build configuration list for PBXNativeTarget "ShelfDropApp" */;
@@ -277,11 +361,13 @@
 				B7C3397EF8B8ED7B7F039F10 /* Sources */,
 				7D64262B28FD6AA1078F7CCE /* Frameworks */,
 				56EF87B04C7DF3A95B038147 /* Embed Frameworks */,
+				3245B62B91B1F06F382DE53B /* Embed Dependencies */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				E9E5C8DC5CA9043B8D33EDEA /* PBXTargetDependency */,
+				CAD7AE0F4CBF79B29CE2322A /* PBXTargetDependency */,
 			);
 			name = ShelfDropApp;
 			packageProductDependencies = (
@@ -339,16 +425,26 @@
 				3B97CFEDDDA4B022B1C40529 /* ShelfDropAppTests */,
 				229EB9B07B445165290D908B /* ShelfDropCore */,
 				ADF81199CCDFBBC99EF61A0C /* ShelfDropCoreTests */,
+				57C848AECEDE1764E79C65B2 /* ShelfDropFinderAction */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0353911FBE3A8234A68B7E13 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1DAA71CE7A4FDF1DD212002 /* ShelfFinderActionRequestHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0F53043B3B6D28E0741E3C26 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				B64660FEBB530C003256A398 /* CoreTests.swift in Sources */,
+				9EF4DE66DA1DF40C44FC35F1 /* ShelfIngestTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -359,6 +455,7 @@
 				A9EDB1654D9A8BB661619150 /* Models.swift in Sources */,
 				80D6111C6667D235066F3BCE /* RenamePlanner.swift in Sources */,
 				D2C4DE17C45B676ACEAD61E2 /* Services.swift in Sources */,
+				6DF9194CB92D09AEA451CE7B /* ShelfIngestService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -378,6 +475,7 @@
 				EEA47C56118F3223AD995B0B /* AppContainer.swift in Sources */,
 				2B2BFF0BCC7B236B99FE2B99 /* QuickLookSupport.swift in Sources */,
 				92A7A9BF7E7C3ADF2E1CAD59 /* ShelfDropMain.swift in Sources */,
+				93B6C5F69A9E24923C1393E9 /* ShelfExternalIntegration.swift in Sources */,
 				6614CB9A152990D8D34C1C95 /* ShelfRootView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -390,6 +488,11 @@
 			target = 229EB9B07B445165290D908B /* ShelfDropCore */;
 			targetProxy = 599D1AD7517E9A5CC4CFDA41 /* PBXContainerItemProxy */;
 		};
+		263B7169EE116609419391CA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 229EB9B07B445165290D908B /* ShelfDropCore */;
+			targetProxy = AE9126F423F74E9A22BD2A9B /* PBXContainerItemProxy */;
+		};
 		28EA04FF68344056C8B383BF /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 229EB9B07B445165290D908B /* ShelfDropCore */;
@@ -399,6 +502,11 @@
 			isa = PBXTargetDependency;
 			target = 7FA70C8B137591D7913BB0C6 /* ShelfDropApp */;
 			targetProxy = 711F7938A006AD33D73AC060 /* PBXContainerItemProxy */;
+		};
+		CAD7AE0F4CBF79B29CE2322A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 57C848AECEDE1764E79C65B2 /* ShelfDropFinderAction */;
+			targetProxy = 41294DDCB7E8C0C1671E43A6 /* PBXContainerItemProxy */;
 		};
 		E9E5C8DC5CA9043B8D33EDEA /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -413,12 +521,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_ENTITLEMENTS = Config/ShelfDrop.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = ShelfDrop;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Config/ShelfDrop-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -454,6 +561,27 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
+		};
+		7C12C86F161E567E0FACC99C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_ENTITLEMENTS = Config/ShelfDropFinderAction.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Config/ShelfDropFinderAction-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDropFinderAction;
+				PRODUCT_NAME = ShelfDropFinderAction;
+				SDKROOT = macosx;
+			};
+			name = Release;
 		};
 		80B9B27DE44C7268AE9994D2 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -523,12 +651,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_ENTITLEMENTS = Config/ShelfDrop.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = ShelfDrop;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Config/ShelfDrop-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -670,6 +797,27 @@
 			};
 			name = Release;
 		};
+		E3980154E113CAD9D24500FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_ENTITLEMENTS = Config/ShelfDropFinderAction.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Config/ShelfDropFinderAction-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 0.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDropFinderAction;
+				PRODUCT_NAME = ShelfDropFinderAction;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 		FAB952D73AB448A0C509F85A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -712,6 +860,15 @@
 			buildConfigurations = (
 				80B9B27DE44C7268AE9994D2 /* Debug */,
 				B7917F621DFF9FE9CF4B519A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6A214BF6EA5F065F14C026BD /* Build configuration list for PBXNativeTarget "ShelfDropFinderAction" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E3980154E113CAD9D24500FB /* Debug */,
+				7C12C86F161E567E0FACC99C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

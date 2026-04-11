@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct ShelfDropAppMain: App {
+    @NSApplicationDelegateAdaptor(ShelfDropAppDelegate.self) private var appDelegate
     @StateObject private var container = AppContainer.shared
 
     var body: some Scene {

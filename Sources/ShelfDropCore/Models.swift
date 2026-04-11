@@ -421,9 +421,15 @@ public struct BatchMutation: Sendable {
 public struct AppSnapshot: Codable, Sendable {
     public var sessions: [ShelfSession]
     public var recentDestinations: [URL]
+    public var selectedSessionID: UUID?
 
-    public init(sessions: [ShelfSession], recentDestinations: [URL]) {
+    public init(
+        sessions: [ShelfSession],
+        recentDestinations: [URL],
+        selectedSessionID: UUID? = nil
+    ) {
         self.sessions = sessions
         self.recentDestinations = recentDestinations
+        self.selectedSessionID = selectedSessionID
     }
 }

@@ -29,6 +29,25 @@ func deletingNonSelectedShelfKeepsSelection() throws {
 }
 
 @MainActor
+@Test("selecting a shelf persists the remembered target")
+func selectingShelfPersistsRememberedTarget() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let first = ShelfSession(title: "First")
+    let second = ShelfSession(title: "Second")
+    let (viewModel, store) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [first, second], recentDestinations: [])
+    )
+
+    viewModel.select(sessionID: second.id)
+    let snapshot = store.load().snapshot
+
+    #expect(snapshot.selectedSessionID == second.id)
+}
+
+@MainActor
 @Test("deleting the selected shelf selects the next remaining shelf")
 func deletingSelectedShelfSelectsNextShelf() throws {
     let directory = makeTemporaryDirectory()
@@ -51,6 +70,7 @@ func deletingSelectedShelfSelectsNextShelf() throws {
     #expect(viewModel.sessions.map(\.id) == [first.id, third.id])
     #expect(viewModel.selectedSessionID == third.id)
     #expect(viewModel.selectedItemIDs.isEmpty)
+    #expect(storeSnapshot(in: directory).selectedSessionID == third.id)
 }
 
 @MainActor
@@ -61,7 +81,7 @@ func deletingSelectedLastShelfSelectsPreviousShelf() throws {
 
     let first = ShelfSession(title: "First", items: [try makeItem(in: directory, named: "first.txt")])
     let second = ShelfSession(title: "Second", items: [try makeItem(in: directory, named: "second.txt")])
-    let (viewModel, _) = try makeViewModel(
+    let (viewModel, store) = try makeViewModel(
         in: directory,
         snapshot: AppSnapshot(sessions: [first, second], recentDestinations: [])
     )
@@ -72,6 +92,7 @@ func deletingSelectedLastShelfSelectsPreviousShelf() throws {
 
     #expect(viewModel.sessions.map(\.id) == [first.id])
     #expect(viewModel.selectedSessionID == first.id)
+    #expect(store.load().snapshot.selectedSessionID == first.id)
 }
 
 @MainActor
@@ -118,6 +139,37 @@ func deletingFinalShelfPersistsReplacementSnapshot() throws {
     #expect(snapshot.sessions.count == 1)
     #expect(snapshot.sessions[0].id == viewModel.selectedSessionID)
     #expect(snapshot.sessions[0].items.isEmpty)
+    #expect(snapshot.selectedSessionID == viewModel.selectedSessionID)
+}
+
+@MainActor
+@Test("reloadFromStore applies external ingest to the remembered shelf")
+func reloadFromStoreAppliesExternalIngest() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let first = ShelfSession(title: "First")
+    let second = ShelfSession(title: "Second")
+    let snapshot = AppSnapshot(
+        sessions: [first, second],
+        recentDestinations: [],
+        selectedSessionID: second.id
+    )
+    let (viewModel, store) = try makeViewModel(in: directory, snapshot: snapshot)
+    let incomingURL = directory.appendingPathComponent("incoming.txt")
+    try Data("incoming".utf8).write(to: incomingURL)
+
+    viewModel.select(sessionID: second.id)
+
+    let ingest = ShelfIngestService(store: store)
+    let result = try ingest.add(urls: [incomingURL])
+
+    #expect(result.targetSessionID == second.id)
+
+    viewModel.reloadFromStore()
+
+    #expect(viewModel.selectedSessionID == second.id)
+    #expect(viewModel.selectedSession.items.contains(where: { $0.url == incomingURL }))
 }
 
 private func makeTemporaryDirectory() -> URL {
@@ -146,4 +198,8 @@ private func makeItem(in directory: URL, named name: String) throws -> ShelfItem
     try Data(name.utf8).write(to: url)
     let catalog = FileCatalogService()
     return try #require(catalog.makeShelfItems(urls: [url]).first)
+}
+
+private func storeSnapshot(in directory: URL) -> AppSnapshot {
+    ShelfStore(baseDirectory: directory).load().snapshot
 }

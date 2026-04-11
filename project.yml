@@ -26,19 +26,78 @@ targets:
     platform: macOS
     sources:
       - path: Sources/ShelfDropApp
+    info:
+      path: Config/ShelfDrop-Info.plist
+      properties:
+        CFBundleDisplayName: ShelfDrop
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: ""
+        NSServices:
+          - NSMenuItem:
+              default: Add to Shelf
+            NSMessage: addToShelf
+            NSPortName: ShelfDrop
+            NSSendFileTypes:
+              - public.item
+            NSServiceDescription: Add selected files and folders to the active ShelfDrop shelf.
+    entitlements:
+      path: Config/ShelfDrop.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.application-groups:
+          - group.com.lovelystack.shared
     dependencies:
       - target: ShelfDropCore
+      - target: ShelfDropFinderAction
+        embed: true
+        copy:
+          destination: plugins
     settings:
       base:
         PRODUCT_NAME: ShelfDrop
         PRODUCT_BUNDLE_IDENTIFIER: com.lovelystack.ShelfDrop
-        GENERATE_INFOPLIST_FILE: YES
+        GENERATE_INFOPLIST_FILE: NO
         CODE_SIGNING_ALLOWED: NO
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 0.2.0
-        INFOPLIST_KEY_CFBundleDisplayName: ShelfDrop
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+  ShelfDropFinderAction:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Extensions/ShelfDropFinderAction
+    info:
+      path: Config/ShelfDropFinderAction-Info.plist
+      properties:
+        CFBundleDisplayName: Add to Shelf
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ui-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShelfFinderActionRequestHandler
+          NSExtensionAttributes:
+            NSExtensionServiceRoleType: Viewer
+            NSExtensionServiceAllowsFinderPreviewItem: true
+            NSExtensionServiceFinderPreviewLabel: Add to Shelf
+            NSExtensionServiceFinderPreviewIconName: square.stack.3d.up.fill
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsAttachmentsWithMinCount: 1
+              NSExtensionActivationSupportsFileWithMaxCount: 100
+    entitlements:
+      path: Config/ShelfDropFinderAction.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-only: true
+        com.apple.security.application-groups:
+          - group.com.lovelystack.shared
+    dependencies:
+      - target: ShelfDropCore
+    settings:
+      base:
+        PRODUCT_NAME: ShelfDropFinderAction
+        PRODUCT_BUNDLE_IDENTIFIER: com.lovelystack.ShelfDropFinderAction
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGNING_ALLOWED: NO
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 0.2.0
   ShelfDropCoreTests:
     type: bundle.unit-test
     platform: macOS

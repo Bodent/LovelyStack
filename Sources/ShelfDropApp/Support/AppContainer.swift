@@ -11,15 +11,25 @@ final class AppContainer: ObservableObject {
     let catalog: FileCatalogService
     let actions: FileActionService
     @Published var model: ShelfViewModel
+    private var externalChangeObserver: NSObjectProtocol?
 
     private init() {
-        let supportRoot = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("LovelyStack", isDirectory: true)
+        let supportRoot = SharedShelfStorage.baseDirectory()
         self.supportDirectory = supportRoot
         self.store = ShelfStore(baseDirectory: supportRoot)
         self.catalog = FileCatalogService()
         self.actions = FileActionService(baseDirectory: supportRoot)
         self.model = ShelfViewModel(store: store, catalog: catalog, actions: actions)
+        let model = self.model
+        self.externalChangeObserver = DistributedNotificationCenter.default().addObserver(
+            forName: ShelfStateChangeBroadcaster.notificationName,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                model.reloadFromStore()
+            }
+        }
     }
 }
 
@@ -43,26 +53,24 @@ final class ShelfViewModel: ObservableObject {
     private let store: ShelfStore
     private let catalog: FileCatalogService
     private let actions: FileActionService
+    private let ingest: ShelfIngestService
 
     init(store: ShelfStore, catalog: FileCatalogService, actions: FileActionService) {
         self.store = store
         self.catalog = catalog
         self.actions = actions
+        self.ingest = ShelfIngestService(store: store, catalog: catalog)
 
         let loadResult = store.load()
         self.loadWarning = loadResult.warning
 
-        let snapshot = loadResult.snapshot
-        let restoredSessions = snapshot.sessions.isEmpty ? [ShelfSession()] : snapshot.sessions
-        let initialSessions = restoredSessions.map { session in
-            var refreshedSession = session
-            refreshedSession.items = session.items.map { item in
-                catalog.refresh(item: item) ?? item
-            }
-            return refreshedSession
-        }
-        self.sessions = initialSessions
-        self.selectedSessionID = initialSessions[0].id
+        let snapshot = Self.normalizedSnapshot(
+            from: loadResult.snapshot,
+            refreshItems: true,
+            catalog: catalog
+        )
+        self.sessions = snapshot.sessions
+        self.selectedSessionID = snapshot.selectedSessionID ?? snapshot.sessions[0].id
         self.recentDestinations = snapshot.recentDestinations
         if loadResult.warning == nil {
             persist()
@@ -165,20 +173,21 @@ final class ShelfViewModel: ObservableObject {
     func select(sessionID: UUID) {
         selectedSessionID = sessionID
         selectedItemIDs.removeAll()
+        persist()
         recalculateReview()
     }
 
     func addFiles(urls: [URL]) {
         guard !urls.isEmpty else { return }
-        let newItems = catalog.makeShelfItems(urls: urls)
-        let existingURLs = Set(selectedSession.items.map(\.url))
-        let deduped = newItems.filter { !existingURLs.contains($0.url) }
-        guard !deduped.isEmpty else { return }
-        selectedSession.items.append(contentsOf: deduped)
-        selectedSession.updatedAt = Date()
-        selectedItemIDs = Set(deduped.map(\.id))
-        persist()
-        recalculateReview()
+        do {
+            let result = try ingest.add(urls: urls, targetSessionID: selectedSessionID)
+            guard !result.addedItems.isEmpty else { return }
+            applySnapshot(result.snapshot, refreshItems: false, preserveSelectedItems: false)
+            selectedItemIDs = Set(result.addedItems.map(\.id))
+            recalculateReview()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func removeSelectedFromShelf() {
@@ -375,6 +384,17 @@ final class ShelfViewModel: ObservableObject {
         pendingPreview = nil
     }
 
+    func reloadFromStore() {
+        let loadResult = store.load()
+        loadWarning = loadResult.warning
+
+        if let warning = loadResult.warning {
+            errorMessage = warning
+        }
+
+        applySnapshot(loadResult.snapshot, refreshItems: true, preserveSelectedItems: true)
+    }
+
     private func remember(destination: URL) {
         recentDestinations.removeAll { $0 == destination }
         recentDestinations.insert(destination, at: 0)
@@ -437,9 +457,63 @@ final class ShelfViewModel: ObservableObject {
         review = actions.review(items: selectedSession.items)
     }
 
+    private func applySnapshot(_ snapshot: AppSnapshot, refreshItems: Bool, preserveSelectedItems: Bool) {
+        let previousSelectedItems = selectedItemIDs
+        let normalized = Self.normalizedSnapshot(
+            from: snapshot,
+            refreshItems: refreshItems,
+            catalog: catalog
+        )
+
+        sessions = normalized.sessions
+        selectedSessionID = normalized.selectedSessionID ?? normalized.sessions[0].id
+        recentDestinations = normalized.recentDestinations
+
+        if preserveSelectedItems {
+            let validItemIDs = Set(selectedSession.items.map(\.id))
+            selectedItemIDs = previousSelectedItems.intersection(validItemIDs)
+        } else {
+            selectedItemIDs.removeAll()
+        }
+
+        recalculateReview()
+    }
+
+    private static func normalizedSnapshot(
+        from snapshot: AppSnapshot,
+        refreshItems: Bool,
+        catalog: FileCatalogService
+    ) -> AppSnapshot {
+        let restoredSessions = snapshot.sessions.isEmpty ? [ShelfSession()] : snapshot.sessions
+        let normalizedSessions = refreshItems
+            ? restoredSessions.map { refreshSession($0, catalog: catalog) }
+            : restoredSessions
+        let selectedSessionID = normalizedSessions.contains(where: { $0.id == snapshot.selectedSessionID })
+            ? snapshot.selectedSessionID
+            : normalizedSessions[0].id
+
+        return AppSnapshot(
+            sessions: normalizedSessions,
+            recentDestinations: snapshot.recentDestinations,
+            selectedSessionID: selectedSessionID
+        )
+    }
+
+    private static func refreshSession(_ session: ShelfSession, catalog: FileCatalogService) -> ShelfSession {
+        var refreshedSession = session
+        refreshedSession.items = session.items.map { item in
+            catalog.refresh(item: item) ?? item
+        }
+        return refreshedSession
+    }
+
     private func persist() {
         do {
-            let snapshot = AppSnapshot(sessions: sessions, recentDestinations: recentDestinations)
+            let snapshot = AppSnapshot(
+                sessions: sessions,
+                recentDestinations: recentDestinations,
+                selectedSessionID: selectedSessionID
+            )
             try store.save(snapshot)
         } catch {
             errorMessage = error.localizedDescription
