@@ -1,0 +1,149 @@
+import Foundation
+import Testing
+@testable import ShelfDrop
+import ShelfDropCore
+
+@MainActor
+@Test("deleting a non-selected shelf leaves the current selection unchanged")
+func deletingNonSelectedShelfKeepsSelection() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let firstItem = try makeItem(in: directory, named: "first.txt")
+    let secondItem = try makeItem(in: directory, named: "second.txt")
+    let first = ShelfSession(title: "First", items: [firstItem])
+    let second = ShelfSession(title: "Second", items: [secondItem])
+    let (viewModel, _) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [first, second], recentDestinations: [])
+    )
+
+    viewModel.select(sessionID: second.id)
+    viewModel.selectedItemIDs = [secondItem.id]
+
+    viewModel.deleteShelf(sessionID: first.id)
+
+    #expect(viewModel.sessions.map(\.id) == [second.id])
+    #expect(viewModel.selectedSessionID == second.id)
+    #expect(viewModel.selectedItemIDs == [secondItem.id])
+}
+
+@MainActor
+@Test("deleting the selected shelf selects the next remaining shelf")
+func deletingSelectedShelfSelectsNextShelf() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let first = ShelfSession(title: "First", items: [try makeItem(in: directory, named: "first.txt")])
+    let secondItem = try makeItem(in: directory, named: "second.txt")
+    let second = ShelfSession(title: "Second", items: [secondItem])
+    let third = ShelfSession(title: "Third", items: [try makeItem(in: directory, named: "third.txt")])
+    let (viewModel, _) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [first, second, third], recentDestinations: [])
+    )
+
+    viewModel.select(sessionID: second.id)
+    viewModel.selectedItemIDs = [secondItem.id]
+
+    viewModel.deleteShelf(sessionID: second.id)
+
+    #expect(viewModel.sessions.map(\.id) == [first.id, third.id])
+    #expect(viewModel.selectedSessionID == third.id)
+    #expect(viewModel.selectedItemIDs.isEmpty)
+}
+
+@MainActor
+@Test("deleting the selected last shelf falls back to the previous shelf")
+func deletingSelectedLastShelfSelectsPreviousShelf() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let first = ShelfSession(title: "First", items: [try makeItem(in: directory, named: "first.txt")])
+    let second = ShelfSession(title: "Second", items: [try makeItem(in: directory, named: "second.txt")])
+    let (viewModel, _) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [first, second], recentDestinations: [])
+    )
+
+    viewModel.select(sessionID: second.id)
+
+    viewModel.deleteShelf(sessionID: second.id)
+
+    #expect(viewModel.sessions.map(\.id) == [first.id])
+    #expect(viewModel.selectedSessionID == first.id)
+}
+
+@MainActor
+@Test("deleting the final remaining shelf creates a fresh empty replacement shelf")
+func deletingFinalShelfCreatesEmptyReplacement() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let item = try makeItem(in: directory, named: "only.txt")
+    let session = ShelfSession(title: "Only", items: [item])
+    let (viewModel, _) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [session], recentDestinations: [])
+    )
+
+    viewModel.selectedItemIDs = [item.id]
+    viewModel.deleteShelf(sessionID: session.id)
+
+    #expect(viewModel.sessions.count == 1)
+    #expect(viewModel.selectedSessionID != session.id)
+    #expect(viewModel.selectedSession.title == "New Shelf")
+    #expect(viewModel.selectedSession.items.isEmpty)
+    #expect(viewModel.selectedItemIDs.isEmpty)
+    #expect(viewModel.review.changes.isEmpty)
+    #expect(viewModel.review.issues.isEmpty)
+    #expect(viewModel.review.duplicateGroups.isEmpty)
+}
+
+@MainActor
+@Test("deleting the final shelf persists a valid replacement snapshot")
+func deletingFinalShelfPersistsReplacementSnapshot() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let session = ShelfSession(title: "Only", items: [try makeItem(in: directory, named: "only.txt")])
+    let (viewModel, store) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [session], recentDestinations: [])
+    )
+
+    viewModel.deleteShelf(sessionID: session.id)
+    let snapshot = store.load().snapshot
+
+    #expect(snapshot.sessions.count == 1)
+    #expect(snapshot.sessions[0].id == viewModel.selectedSessionID)
+    #expect(snapshot.sessions[0].items.isEmpty)
+}
+
+private func makeTemporaryDirectory() -> URL {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory
+}
+
+@MainActor
+private func makeViewModel(
+    in directory: URL,
+    snapshot: AppSnapshot
+) throws -> (ShelfViewModel, ShelfStore) {
+    let store = ShelfStore(baseDirectory: directory)
+    try store.save(snapshot)
+    let viewModel = ShelfViewModel(
+        store: store,
+        catalog: FileCatalogService(),
+        actions: FileActionService(baseDirectory: directory)
+    )
+    return (viewModel, store)
+}
+
+private func makeItem(in directory: URL, named name: String) throws -> ShelfItem {
+    let url = directory.appendingPathComponent(name)
+    try Data(name.utf8).write(to: url)
+    let catalog = FileCatalogService()
+    return try #require(catalog.makeShelfItems(urls: [url]).first)
+}

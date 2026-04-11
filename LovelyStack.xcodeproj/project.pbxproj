@@ -9,15 +9,18 @@
 /* Begin PBXBuildFile section */
 		2B2BFF0BCC7B236B99FE2B99 /* QuickLookSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD2BD3127EBB33BE4BC02D88 /* QuickLookSupport.swift */; };
 		53235FBD2875D64A2CC15345 /* ShelfDropCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; };
+		5D7D4899C9EE9801F5C38893 /* ShelfViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DCD5DF95EDCE0D97A6453F /* ShelfViewModelTests.swift */; };
 		6614CB9A152990D8D34C1C95 /* ShelfRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68672A1E72F866B7A319A231 /* ShelfRootView.swift */; };
 		8050785D174A549F44618E50 /* ShelfDropCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		80D6111C6667D235066F3BCE /* RenamePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80309C7F8ADF648D5586A4DB /* RenamePlanner.swift */; };
 		92A7A9BF7E7C3ADF2E1CAD59 /* ShelfDropMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD274EBB7A1F1DBD812DBFE /* ShelfDropMain.swift */; };
+		A4F269FF15C7C3A54025DC29 /* ShelfDropCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A9EDB1654D9A8BB661619150 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E5EB56DA9626E13E36AF55 /* Models.swift */; };
 		B166C5E6D25EA353BFADAC00 /* ShelfDropCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; };
 		B64660FEBB530C003256A398 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8086ED4B80DEB2BF968FD54D /* CoreTests.swift */; };
 		D2C4DE17C45B676ACEAD61E2 /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EEA0E655612D4281A13E1B /* Services.swift */; };
 		DA74FEA9E3C89D3A6E32E019 /* ActionSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5C0C7338173636CD23B96F0 /* ActionSheets.swift */; };
+		E5396CB8FE81917A012EF808 /* ShelfDropCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; };
 		EEA47C56118F3223AD995B0B /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25800BD124E84EAD0F7824AB /* AppContainer.swift */; };
 		F50E2B03F0035AAA06FBA26E /* ShelfDropCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
@@ -31,6 +34,20 @@
 			remoteInfo = ShelfDropCore;
 		};
 		599D1AD7517E9A5CC4CFDA41 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1BA22E3B920455D0B7227F1B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 229EB9B07B445165290D908B;
+			remoteInfo = ShelfDropCore;
+		};
+		711F7938A006AD33D73AC060 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1BA22E3B920455D0B7227F1B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7FA70C8B137591D7913BB0C6;
+			remoteInfo = ShelfDropApp;
+		};
+		8DF794DC39E4978C94E776CA /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 1BA22E3B920455D0B7227F1B /* Project object */;
 			proxyType = 1;
@@ -51,6 +68,17 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		4AD2EF67B429ADCAC4CD6FBC /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A4F269FF15C7C3A54025DC29 /* ShelfDropCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		56EF87B04C7DF3A95B038147 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -65,6 +93,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		17A2BD217A74E338E318DD35 /* ShelfDropAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ShelfDropAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		25800BD124E84EAD0F7824AB /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		25E5EB56DA9626E13E36AF55 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		68672A1E72F866B7A319A231 /* ShelfRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfRootView.swift; sourceTree = "<group>"; };
@@ -76,6 +105,7 @@
 		A5C0C7338173636CD23B96F0 /* ActionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionSheets.swift; sourceTree = "<group>"; };
 		C9190E878A39F2409DDB63DF /* ShelfDropApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ShelfDropApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ShelfDropCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1DCD5DF95EDCE0D97A6453F /* ShelfViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfViewModelTests.swift; sourceTree = "<group>"; };
 		FD2BD3127EBB33BE4BC02D88 /* QuickLookSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookSupport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -96,6 +126,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B82AB58612DEA13EC82B5CFB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E5396CB8FE81917A012EF808 /* ShelfDropCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -107,6 +145,14 @@
 				A0EEA0E655612D4281A13E1B /* Services.swift */,
 			);
 			path = ShelfDropCore;
+			sourceTree = "<group>";
+		};
+		2C248A084C8384F98F3085FB /* ShelfDropAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				F1DCD5DF95EDCE0D97A6453F /* ShelfViewModelTests.swift */,
+			);
+			path = ShelfDropAppTests;
 			sourceTree = "<group>";
 		};
 		6717414BB4AC1740D0AD406B /* Support */ = {
@@ -122,6 +168,7 @@
 			isa = PBXGroup;
 			children = (
 				C9190E878A39F2409DDB63DF /* ShelfDropApp.app */,
+				17A2BD217A74E338E318DD35 /* ShelfDropAppTests.xctest */,
 				EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */,
 				9509FB42956892BE779EAA96 /* ShelfDropCoreTests.xctest */,
 			);
@@ -176,6 +223,7 @@
 		F8A303EFC6C46D53E75B9076 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				2C248A084C8384F98F3085FB /* ShelfDropAppTests */,
 				F337FD35401F68F8D63F3E19 /* ShelfDropCoreTests */,
 			);
 			path = Tests;
@@ -200,6 +248,27 @@
 			productName = ShelfDropCore;
 			productReference = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */;
 			productType = "com.apple.product-type.framework";
+		};
+		3B97CFEDDDA4B022B1C40529 /* ShelfDropAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 08EB24E506B31DFC5CC07915 /* Build configuration list for PBXNativeTarget "ShelfDropAppTests" */;
+			buildPhases = (
+				357F881055FDDDB7DA74EC22 /* Sources */,
+				B82AB58612DEA13EC82B5CFB /* Frameworks */,
+				4AD2EF67B429ADCAC4CD6FBC /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				88128A0C7F9C663CD36BC2BD /* PBXTargetDependency */,
+				28EA04FF68344056C8B383BF /* PBXTargetDependency */,
+			);
+			name = ShelfDropAppTests;
+			packageProductDependencies = (
+			);
+			productName = ShelfDropAppTests;
+			productReference = 17A2BD217A74E338E318DD35 /* ShelfDropAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		7FA70C8B137591D7913BB0C6 /* ShelfDropApp */ = {
 			isa = PBXNativeTarget;
@@ -267,6 +336,7 @@
 			projectRoot = "";
 			targets = (
 				7FA70C8B137591D7913BB0C6 /* ShelfDropApp */,
+				3B97CFEDDDA4B022B1C40529 /* ShelfDropAppTests */,
 				229EB9B07B445165290D908B /* ShelfDropCore */,
 				ADF81199CCDFBBC99EF61A0C /* ShelfDropCoreTests */,
 			);
@@ -292,6 +362,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		357F881055FDDDB7DA74EC22 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D7D4899C9EE9801F5C38893 /* ShelfViewModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B7C3397EF8B8ED7B7F039F10 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -311,6 +389,16 @@
 			isa = PBXTargetDependency;
 			target = 229EB9B07B445165290D908B /* ShelfDropCore */;
 			targetProxy = 599D1AD7517E9A5CC4CFDA41 /* PBXContainerItemProxy */;
+		};
+		28EA04FF68344056C8B383BF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 229EB9B07B445165290D908B /* ShelfDropCore */;
+			targetProxy = 8DF794DC39E4978C94E776CA /* PBXContainerItemProxy */;
+		};
+		88128A0C7F9C663CD36BC2BD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7FA70C8B137591D7913BB0C6 /* ShelfDropApp */;
+			targetProxy = 711F7938A006AD33D73AC060 /* PBXContainerItemProxy */;
 		};
 		E9E5C8DC5CA9043B8D33EDEA /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -335,7 +423,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDrop;
 				PRODUCT_NAME = ShelfDrop;
 				SDKROOT = macosx;
@@ -445,7 +533,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDrop;
 				PRODUCT_NAME = ShelfDrop;
 				SDKROOT = macosx;
@@ -544,6 +632,44 @@
 			};
 			name = Release;
 		};
+		C37C01CD8C1639CC74D13D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(BUILT_PRODUCTS_DIR)/ShelfDrop.app/Contents/MacOS/ShelfDrop";
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDropAppTests;
+				PRODUCT_NAME = ShelfDropAppTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ShelfDrop.app/Contents/MacOS/ShelfDrop";
+			};
+			name = Debug;
+		};
+		D76831AF726D966B5717095C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(BUILT_PRODUCTS_DIR)/ShelfDrop.app/Contents/MacOS/ShelfDrop";
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDropAppTests;
+				PRODUCT_NAME = ShelfDropAppTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ShelfDrop.app/Contents/MacOS/ShelfDrop";
+			};
+			name = Release;
+		};
 		FAB952D73AB448A0C509F85A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -572,6 +698,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		08EB24E506B31DFC5CC07915 /* Build configuration list for PBXNativeTarget "ShelfDropAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C37C01CD8C1639CC74D13D5D /* Debug */,
+				D76831AF726D966B5717095C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		64C4639012FE01D38C47F182 /* Build configuration list for PBXProject "LovelyStack" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

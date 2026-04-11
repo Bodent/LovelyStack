@@ -4,59 +4,59 @@ import SwiftUI
 
 struct ShelfRootView: View {
     @ObservedObject var viewModel: ShelfViewModel
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var renameShelfTitle = ""
     @State private var zipBaseName = "Shelf Bundle"
     @State private var pdfBaseName = "Combined Images"
     @State private var isDropTargeted = false
+    @State private var pendingShelfDeletion: PendingShelfDeletion?
 
     var body: some View {
-        NavigationSplitView {
-            SessionsSidebar(viewModel: viewModel, renameShelfTitle: $renameShelfTitle)
+        ZStack {
+            SidebarMatchedBackground()
+                .ignoresSafeArea()
+
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SessionsSidebar(
+                    viewModel: viewModel,
+                    renameShelfTitle: $renameShelfTitle,
+                    pendingShelfDeletion: $pendingShelfDeletion
+                )
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
-        } content: {
-            VStack(spacing: 0) {
-                FileReviewBanner(viewModel: viewModel)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+            } content: {
+                VStack(spacing: 0) {
+                    CenterHeaderBar(
+                        viewModel: viewModel,
+                        leadingTitleInset: isSidebarCollapsed ? 138 : 0
+                    )
+                    FileReviewBanner(viewModel: viewModel)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
 
-                Divider()
+                    Divider()
 
-                DropShelfView(viewModel: viewModel, isDropTargeted: $isDropTargeted)
-            }
-            .navigationSplitViewColumnWidth(min: 400, ideal: 600)
-            .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button {
-                        viewModel.addFiles(urls: FolderPicker.chooseFiles())
-                    } label: {
-                        Label("Add Files", systemImage: "doc.badge.plus")
-                    }
-                    .help("Add Files")
-
-                    Button {
-                        viewModel.togglePinSelectedShelf()
-                    } label: {
-                        Label(viewModel.selectedSession.isPinned ? "Unpin Shelf" : "Pin Shelf", systemImage: viewModel.selectedSession.isPinned ? "pin.slash" : "pin")
-                    }
-                    .help(viewModel.selectedSession.isPinned ? "Unpin Shelf" : "Pin Shelf")
-
-                    Button {
-                        viewModel.performUndo()
-                    } label: {
-                        Label("Undo", systemImage: "arrow.uturn.backward")
-                    }
-                    .disabled(!viewModel.canUndo)
-                    .help("Undo Last Batch")
+                    DropShelfView(viewModel: viewModel, isDropTargeted: $isDropTargeted)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(CenterPaneBackground())
+                .ignoresSafeArea(.container, edges: .top)
+                .navigationSplitViewColumnWidth(min: 400, ideal: 600)
+            } detail: {
+                VStack(spacing: 0) {
+                    InspectorHeaderBar(searchText: $viewModel.searchText)
+                    Divider()
+
+                    InspectorPanel(
+                        viewModel: viewModel,
+                        zipBaseName: $zipBaseName,
+                        pdfBaseName: $pdfBaseName
+                    )
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(SidebarMatchedBackground())
+                .ignoresSafeArea(.container, edges: .top)
+                .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 450)
             }
-            .searchable(text: $viewModel.searchText, prompt: "Search files, tags, or type")
-        } detail: {
-            InspectorPanel(
-                viewModel: viewModel,
-                zipBaseName: $zipBaseName,
-                pdfBaseName: $pdfBaseName
-            )
-            .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 450)
         }
         .sheet(item: $viewModel.pendingPreview) { pending in
             ActionPreviewSheet(pending: pending)
@@ -74,6 +74,30 @@ struct ShelfRootView: View {
         } message: {
             Text(viewModel.errorMessage ?? "Unknown error")
         }
+        .confirmationDialog(
+            "Delete Shelf?",
+            isPresented: Binding(
+                get: { pendingShelfDeletion != nil },
+                set: { shouldShow in
+                    if !shouldShow {
+                        pendingShelfDeletion = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingShelfDeletion
+        ) { pending in
+            Button("Delete Shelf", role: .destructive) {
+                viewModel.deleteShelf(sessionID: pending.sessionID)
+                renameShelfTitle = viewModel.selectedSession.title
+                pendingShelfDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingShelfDeletion = nil
+            }
+        } message: { pending in
+            Text(pending.message)
+        }
         .overlay(alignment: .topTrailing) {
             if viewModel.isBusy {
                 ProgressView("Working…")
@@ -83,11 +107,129 @@ struct ShelfRootView: View {
             }
         }
     }
+
+    private var isSidebarCollapsed: Bool {
+        columnVisibility == .doubleColumn || columnVisibility == .detailOnly
+    }
+}
+
+private struct CenterHeaderBar: View {
+    @ObservedObject var viewModel: ShelfViewModel
+    let leadingTitleInset: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("ShelfDrop")
+                .font(.system(size: 18, weight: .semibold))
+                .padding(.leading, leadingTitleInset)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 12) {
+                HeaderActionButton(
+                    title: "Add Files",
+                    systemImage: "doc.badge.plus"
+                ) {
+                    viewModel.addFiles(urls: FolderPicker.chooseFiles())
+                }
+
+                HeaderActionButton(
+                    title: viewModel.selectedSession.isPinned ? "Unpin Shelf" : "Pin Shelf",
+                    systemImage: viewModel.selectedSession.isPinned ? "pin.slash" : "pin"
+                ) {
+                    viewModel.togglePinSelectedShelf()
+                }
+
+                HeaderActionButton(
+                    title: "Undo",
+                    systemImage: "arrow.uturn.backward"
+                ) {
+                    viewModel.performUndo()
+                }
+                .disabled(!viewModel.canUndo)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
+        .background(CenterPaneBackground())
+        .animation(.smooth(duration: 0.22), value: leadingTitleInset)
+    }
+}
+
+private struct InspectorHeaderBar: View {
+    @Binding var searchText: String
+
+    var body: some View {
+        HStack {
+            SearchField(text: $searchText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
+        .background(SidebarMatchedBackground())
+    }
+}
+
+private struct SearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Search files, tags, or type", text: $text)
+                .textFieldStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color(nsColor: .textBackgroundColor))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct HeaderActionButton: View {
+    let title: String
+    let systemImage: String
+    let action: () -> Void
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 30, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .help(title)
+        .opacity(isEnabled ? 1 : 0.42)
+    }
+}
+
+private struct SidebarMatchedBackground: View {
+    var body: some View {
+        Color(nsColor: .windowBackgroundColor)
+    }
+}
+
+private struct CenterPaneBackground: View {
+    var body: some View {
+        Color(nsColor: .controlBackgroundColor)
+    }
 }
 
 private struct SessionsSidebar: View {
     @ObservedObject var viewModel: ShelfViewModel
     @Binding var renameShelfTitle: String
+    @Binding var pendingShelfDeletion: PendingShelfDeletion?
 
     var body: some View {
         List(selection: Binding(
@@ -99,6 +241,11 @@ private struct SessionsSidebar: View {
                     ForEach(viewModel.pinnedSessions) { session in
                         SidebarRow(session: session)
                             .tag(session.id)
+                            .contextMenu {
+                                Button("Delete Shelf", role: .destructive) {
+                                    requestDelete(session)
+                                }
+                            }
                     }
                 }
             }
@@ -107,6 +254,11 @@ private struct SessionsSidebar: View {
                 ForEach(viewModel.recentSessions) { session in
                     SidebarRow(session: session)
                         .tag(session.id)
+                        .contextMenu {
+                            Button("Delete Shelf", role: .destructive) {
+                                requestDelete(session)
+                            }
+                        }
                 }
             }
         }
@@ -143,6 +295,16 @@ private struct SessionsSidebar: View {
             renameShelfTitle = viewModel.selectedSession.title
         }
     }
+
+    private func requestDelete(_ session: ShelfSession) {
+        guard !session.items.isEmpty else {
+            viewModel.deleteShelf(sessionID: session.id)
+            renameShelfTitle = viewModel.selectedSession.title
+            return
+        }
+
+        pendingShelfDeletion = PendingShelfDeletion(session: session)
+    }
 }
 
 private struct SidebarRow: View {
@@ -164,6 +326,25 @@ private struct SidebarRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct PendingShelfDeletion: Identifiable {
+    let sessionID: UUID
+    let title: String
+    let itemCount: Int
+
+    init(session: ShelfSession) {
+        self.sessionID = session.id
+        self.title = session.title
+        self.itemCount = session.items.count
+    }
+
+    var id: UUID { sessionID }
+
+    var message: String {
+        let itemLabel = itemCount == 1 ? "item" : "items"
+        return "Delete \"\(title)\"? Its \(itemCount) staged \(itemLabel) will be removed from ShelfDrop. Files on disk will not be deleted."
     }
 }
 
@@ -278,6 +459,7 @@ private struct DropShelfView: View {
                     }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .dropDestination(for: URL.self) { urls, _ in
             viewModel.addFiles(urls: urls)
             return true

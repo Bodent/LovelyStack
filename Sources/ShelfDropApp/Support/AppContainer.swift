@@ -113,6 +113,32 @@ final class ShelfViewModel: ObservableObject {
         recalculateReview()
     }
 
+    func deleteShelf(sessionID: UUID) {
+        guard let deleteIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+
+        let deletingSelectedShelf = selectedSessionID == sessionID
+        sessions.remove(at: deleteIndex)
+
+        if sessions.isEmpty {
+            let replacement = ShelfSession()
+            sessions = [replacement]
+            selectedSessionID = replacement.id
+            selectedItemIDs.removeAll()
+            persist()
+            recalculateReview()
+            return
+        }
+
+        if deletingSelectedShelf {
+            let replacementIndex = min(deleteIndex, sessions.count - 1)
+            selectedSessionID = sessions[replacementIndex].id
+            selectedItemIDs.removeAll()
+        }
+
+        persist()
+        recalculateReview()
+    }
+
     func togglePinSelectedShelf() {
         selectedSession.isPinned.toggle()
         selectedSession.updatedAt = Date()

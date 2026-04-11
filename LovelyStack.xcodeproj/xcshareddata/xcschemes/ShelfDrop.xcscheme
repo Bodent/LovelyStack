@@ -62,6 +62,17 @@
                ReferencedContainer = "container:LovelyStack.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "3B97CFEDDDA4B022B1C40529"
+               BuildableName = "ShelfDropAppTests.xctest"
+               BlueprintName = "ShelfDropAppTests"
+               ReferencedContainer = "container:LovelyStack.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

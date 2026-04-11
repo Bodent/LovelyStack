@@ -35,7 +35,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGNING_ALLOWED: NO
         CURRENT_PROJECT_VERSION: 1
-        MARKETING_VERSION: 0.1.0
+        MARKETING_VERSION: 0.2.0
         INFOPLIST_KEY_CFBundleDisplayName: ShelfDrop
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
@@ -52,6 +52,22 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.lovelystack.ShelfDropCoreTests
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGNING_ALLOWED: NO
+  ShelfDropAppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/ShelfDropAppTests
+    dependencies:
+      - target: ShelfDropApp
+      - target: ShelfDropCore
+    settings:
+      base:
+        PRODUCT_NAME: ShelfDropAppTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.lovelystack.ShelfDropAppTests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        BUNDLE_LOADER: $(BUILT_PRODUCTS_DIR)/ShelfDrop.app/Contents/MacOS/ShelfDrop
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/ShelfDrop.app/Contents/MacOS/ShelfDrop
 schemes:
   ShelfDrop:
     build:
@@ -64,3 +80,4 @@ schemes:
       config: Debug
       targets:
         - ShelfDropCoreTests
+        - ShelfDropAppTests

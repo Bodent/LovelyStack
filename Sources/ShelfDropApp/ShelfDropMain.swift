@@ -9,9 +9,11 @@ struct ShelfDropAppMain: App {
         WindowGroup("ShelfDrop", id: "main") {
             ShelfRootView(viewModel: container.model)
                 .frame(minWidth: 1180, minHeight: 760)
+                .background(WindowChromeConfigurator())
         }
         .defaultSize(width: 1260, height: 820)
         .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
 
         MenuBarExtra("ShelfDrop", systemImage: "square.stack.3d.up.fill") {
             MenuBarExtraView(viewModel: container.model)
@@ -56,5 +58,44 @@ private struct MenuBarExtraView: View {
         }
         .padding(12)
         .frame(width: 220)
+    }
+}
+
+private struct WindowChromeConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        DispatchQueue.main.async {
+            configureWindow(for: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            configureWindow(for: nsView)
+        }
+    }
+
+    private func configureWindow(for view: NSView) {
+        guard !ProcessInfo.processInfo.isRunningTests else { return }
+        guard let window = view.window else { return }
+
+        window.title = "ShelfDrop"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.styleMask.insert(.fullSizeContentView)
+
+        if #available(macOS 11.0, *) {
+            window.titlebarSeparatorStyle = .none
+        }
+    }
+}
+
+private extension ProcessInfo {
+    var isRunningTests: Bool {
+        environment["XCTestConfigurationFilePath"] != nil
     }
 }
