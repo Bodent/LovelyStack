@@ -44,6 +44,28 @@ func shelfIngestAddsToRememberedShelf() throws {
     #expect(snapshot.sessions[1].items.contains(where: { testFileURLsMatch($0.url, incomingURL) }))
 }
 
+@Test("ingest honors the remembered shelf instead of another visible window selection")
+func shelfIngestIgnoresWindowSelectionState() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let first = ShelfSession(title: "First")
+    let second = ShelfSession(title: "Second")
+    let store = ShelfStore(baseDirectory: directory)
+    try store.save(AppSnapshot(sessions: [first, second], recentDestinations: [], rememberedIngestTargetSessionID: first.id))
+
+    let incomingURL = directory.appendingPathComponent("incoming.txt")
+    try Data("hello".utf8).write(to: incomingURL)
+
+    let ingest = ShelfIngestService(store: store)
+    let result = try ingest.add(urls: [incomingURL], targetSessionID: nil)
+    let snapshot = store.load().snapshot
+
+    #expect(result.targetSessionID == first.id)
+    #expect(snapshot.sessions[0].items.contains(where: { testFileURLsMatch($0.url, incomingURL) }))
+    #expect(snapshot.sessions[1].items.isEmpty)
+}
+
 @Test("ingest falls back when the remembered shelf no longer exists")
 func shelfIngestFallsBackToFirstShelf() throws {
     let directory = makeTemporaryDirectory()

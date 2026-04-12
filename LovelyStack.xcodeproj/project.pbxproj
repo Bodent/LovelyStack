@@ -15,6 +15,7 @@
 		6DF9194CB92D09AEA451CE7B /* ShelfIngestService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1877E320ECE5E3E4E03C6E99 /* ShelfIngestService.swift */; };
 		8050785D174A549F44618E50 /* ShelfDropCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		80D6111C6667D235066F3BCE /* RenamePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80309C7F8ADF648D5586A4DB /* RenamePlanner.swift */; };
+		9054D8EA63420442F8C3A6E5 /* AppViewModelTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55EF688F28C7CDBC0BD69976 /* AppViewModelTestSupport.swift */; };
 		92A7A9BF7E7C3ADF2E1CAD59 /* ShelfDropMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD274EBB7A1F1DBD812DBFE /* ShelfDropMain.swift */; };
 		93B6C5F69A9E24923C1393E9 /* ShelfExternalIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C018148CFEDA8161BC3BCB5F /* ShelfExternalIntegration.swift */; };
 		9501AF2A68A2855C0DA5354A /* URLIdentityTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F6233508C5C82516FC48D2B /* URLIdentityTestSupport.swift */; };
@@ -26,12 +27,15 @@
 		B1DAA71CE7A4FDF1DD212002 /* ShelfFinderActionRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E02B4B5D2F95FBCA84ECA87 /* ShelfFinderActionRequestHandler.swift */; };
 		B4D60CB9C63C624150E49649 /* ShelfDropFinderAction.appex in Embed Dependencies */ = {isa = PBXBuildFile; fileRef = F681BEBEF56191E41547369A /* ShelfDropFinderAction.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B64660FEBB530C003256A398 /* CoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8086ED4B80DEB2BF968FD54D /* CoreTests.swift */; };
+		C642CB2A8361AC190EB89EB9 /* RepoFileTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F826FE650164BE0551A516E6 /* RepoFileTestSupport.swift */; };
+		CA06678428023ABA2996F72A /* RepoFileTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F826FE650164BE0551A516E6 /* RepoFileTestSupport.swift */; };
 		D2C4DE17C45B676ACEAD61E2 /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0EEA0E655612D4281A13E1B /* Services.swift */; };
 		DA74FEA9E3C89D3A6E32E019 /* ActionSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5C0C7338173636CD23B96F0 /* ActionSheets.swift */; };
 		E5396CB8FE81917A012EF808 /* ShelfDropCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; };
 		EEA47C56118F3223AD995B0B /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25800BD124E84EAD0F7824AB /* AppContainer.swift */; };
 		F2AF221FEECA6844FCC2FF2A /* ShelfSceneState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54C23E1328AD550672CACE5F /* ShelfSceneState.swift */; };
 		F50E2B03F0035AAA06FBA26E /* ShelfDropCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		FE392819C33A0D9D9B19467A /* UIArchitectureContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E131371EA9EADB3375DFD58 /* UIArchitectureContractTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -132,7 +136,9 @@
 		25800BD124E84EAD0F7824AB /* AppContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppContainer.swift; sourceTree = "<group>"; };
 		25E5EB56DA9626E13E36AF55 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		2F6233508C5C82516FC48D2B /* URLIdentityTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLIdentityTestSupport.swift; sourceTree = "<group>"; };
+		4E131371EA9EADB3375DFD58 /* UIArchitectureContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UIArchitectureContractTests.swift; sourceTree = "<group>"; };
 		54C23E1328AD550672CACE5F /* ShelfSceneState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfSceneState.swift; sourceTree = "<group>"; };
+		55EF688F28C7CDBC0BD69976 /* AppViewModelTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModelTestSupport.swift; sourceTree = "<group>"; };
 		68672A1E72F866B7A319A231 /* ShelfRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfRootView.swift; sourceTree = "<group>"; };
 		80309C7F8ADF648D5586A4DB /* RenamePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenamePlanner.swift; sourceTree = "<group>"; };
 		8086ED4B80DEB2BF968FD54D /* CoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>"; };
@@ -147,6 +153,7 @@
 		EB521D570650A8FCAAF5F161 /* ShelfDropCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ShelfDropCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		F1DCD5DF95EDCE0D97A6453F /* ShelfViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfViewModelTests.swift; sourceTree = "<group>"; };
 		F681BEBEF56191E41547369A /* ShelfDropFinderAction.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShelfDropFinderAction.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F826FE650164BE0551A516E6 /* RepoFileTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoFileTestSupport.swift; sourceTree = "<group>"; };
 		FD2BD3127EBB33BE4BC02D88 /* QuickLookSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookSupport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -189,6 +196,7 @@
 		0B67E5A03E89445C53243B36 /* TestSupport */ = {
 			isa = PBXGroup;
 			children = (
+				F826FE650164BE0551A516E6 /* RepoFileTestSupport.swift */,
 				2F6233508C5C82516FC48D2B /* URLIdentityTestSupport.swift */,
 			);
 			path = TestSupport;
@@ -208,7 +216,9 @@
 		2C248A084C8384F98F3085FB /* ShelfDropAppTests */ = {
 			isa = PBXGroup;
 			children = (
+				55EF688F28C7CDBC0BD69976 /* AppViewModelTestSupport.swift */,
 				F1DCD5DF95EDCE0D97A6453F /* ShelfViewModelTests.swift */,
+				4E131371EA9EADB3375DFD58 /* UIArchitectureContractTests.swift */,
 			);
 			path = ShelfDropAppTests;
 			sourceTree = "<group>";
@@ -459,6 +469,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B64660FEBB530C003256A398 /* CoreTests.swift in Sources */,
+				C642CB2A8361AC190EB89EB9 /* RepoFileTestSupport.swift in Sources */,
 				9EF4DE66DA1DF40C44FC35F1 /* ShelfIngestTests.swift in Sources */,
 				9501AF2A68A2855C0DA5354A /* URLIdentityTestSupport.swift in Sources */,
 			);
@@ -479,7 +490,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9054D8EA63420442F8C3A6E5 /* AppViewModelTestSupport.swift in Sources */,
+				CA06678428023ABA2996F72A /* RepoFileTestSupport.swift in Sources */,
 				5D7D4899C9EE9801F5C38893 /* ShelfViewModelTests.swift in Sources */,
+				FE392819C33A0D9D9B19467A /* UIArchitectureContractTests.swift in Sources */,
 				44937C38974F8AF967F25108 /* URLIdentityTestSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -548,7 +562,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDrop;
 				PRODUCT_NAME = ShelfDrop;
 				SDKROOT = macosx;
@@ -594,7 +608,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDropFinderAction;
 				PRODUCT_NAME = ShelfDropFinderAction;
 				SDKROOT = macosx;
@@ -678,7 +692,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDrop;
 				PRODUCT_NAME = ShelfDrop;
 				SDKROOT = macosx;
@@ -829,7 +843,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.2.0;
+				MARKETING_VERSION = 0.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDropFinderAction;
 				PRODUCT_NAME = ShelfDropFinderAction;
 				SDKROOT = macosx;

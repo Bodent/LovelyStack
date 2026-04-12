@@ -62,7 +62,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGNING_ALLOWED: NO
         CURRENT_PROJECT_VERSION: 1
-        MARKETING_VERSION: 0.2.0
+        MARKETING_VERSION: 0.3.0
   ShelfDropFinderAction:
     type: app-extension
     platform: macOS
@@ -99,7 +99,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGNING_ALLOWED: NO
         CURRENT_PROJECT_VERSION: 1
-        MARKETING_VERSION: 0.2.0
+        MARKETING_VERSION: 0.3.0
   ShelfDropCoreTests:
     type: bundle.unit-test
     platform: macOS
