@@ -6,6 +6,7 @@ struct ShelfRootView: View {
     @ObservedObject private var viewModel: ShelfViewModel
     @StateObject private var sceneState: ShelfSceneState
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @SceneStorage("inspector.isPresented") private var isInspectorPresented = true
     @State private var renameShelfTitle = ""
     @State private var zipBaseName = "Shelf Bundle"
     @State private var pdfBaseName = "Combined Images"
@@ -25,7 +26,7 @@ struct ShelfRootView: View {
                 pendingShelfDeletion: $pendingShelfDeletion
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
-        } content: {
+        } detail: {
             VStack(spacing: 0) {
                 CenterHeaderBar(
                     sceneState: sceneState,
@@ -43,21 +44,20 @@ struct ShelfRootView: View {
             .background(CenterPaneBackground())
             .ignoresSafeArea(.container, edges: .top)
             .navigationSplitViewColumnWidth(min: 400, ideal: 600)
-        } detail: {
-            VStack(spacing: 0) {
-                InspectorHeaderBar(searchText: $sceneState.searchText)
-                Divider()
+            .inspector(isPresented: $isInspectorPresented) {
+                VStack(spacing: 0) {
+                    InspectorHeaderBar(searchText: $sceneState.searchText)
+                    Divider()
 
-                InspectorPanel(
-                    sceneState: sceneState,
-                    zipBaseName: $zipBaseName,
-                    pdfBaseName: $pdfBaseName
-                )
+                    InspectorPanel(
+                        sceneState: sceneState,
+                        zipBaseName: $zipBaseName,
+                        pdfBaseName: $pdfBaseName
+                    )
+                }
+                .inspectorColumnWidth(min: 300, ideal: 360, max: 450)
+                .interactiveDismissDisabled()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(InspectorPaneBackground())
-            .ignoresSafeArea(.container, edges: .top)
-            .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 450)
         }
         .navigationSplitViewStyle(.balanced)
         .background(WindowSurfaceBackground())
@@ -116,7 +116,7 @@ struct ShelfRootView: View {
     }
 
     private var isSidebarCollapsed: Bool {
-        columnVisibility == .doubleColumn || columnVisibility == .detailOnly
+        columnVisibility == .detailOnly
     }
 }
 
@@ -219,12 +219,6 @@ private struct WindowSurfaceBackground: View {
     var body: some View {
         Color(nsColor: .windowBackgroundColor)
             .ignoresSafeArea()
-    }
-}
-
-private struct InspectorPaneBackground: View {
-    var body: some View {
-        Color(nsColor: .windowBackgroundColor)
     }
 }
 
@@ -577,7 +571,7 @@ private struct InspectorPanel: View {
     @SceneStorage("inspector.expanded.issues") private var isIssuesExpanded = true
 
     var body: some View {
-        Form {
+        List {
             inspectorSection("Preview", isExpanded: $isPreviewExpanded) {
                 previewContent
             }
@@ -602,8 +596,7 @@ private struct InspectorPanel: View {
                 issuesContent
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        .listStyle(.sidebar)
     }
 
     private var previewContent: some View {
