@@ -55,6 +55,7 @@ struct ShelfRootView: View {
                         pdfBaseName: $pdfBaseName
                     )
                 }
+                .ignoresSafeArea(.container, edges: .top)
                 .inspectorColumnWidth(min: 300, ideal: 360, max: 450)
                 .interactiveDismissDisabled()
             }
@@ -172,7 +173,7 @@ private struct InspectorHeaderBar: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
-        .padding(.bottom, 8)
+        .padding(.bottom, 14)
     }
 }
 
