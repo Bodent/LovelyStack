@@ -82,10 +82,10 @@ public final class ShelfIngestService {
         if snapshot.sessions.isEmpty {
             let replacement = ShelfSession()
             snapshot.sessions = [replacement]
-            snapshot.selectedSessionID = replacement.id
+            snapshot.rememberedIngestTargetSessionID = replacement.id
         }
 
-        let requestedTargetID = targetSessionID ?? snapshot.selectedSessionID
+        let requestedTargetID = targetSessionID ?? snapshot.rememberedIngestTargetSessionID
         let sessionIndex = snapshot.sessions.firstIndex(where: { $0.id == requestedTargetID }) ?? 0
 
         let loadedItems = catalog.makeShelfItems(urls: urls)
@@ -99,7 +99,7 @@ public final class ShelfIngestService {
         }
 
         snapshot.sessions[sessionIndex] = session
-        snapshot.selectedSessionID = session.id
+        snapshot.rememberedIngestTargetSessionID = session.id
         try store.save(snapshot)
 
         return ShelfIngestResult(

@@ -63,7 +63,7 @@ public final class ShelfStore {
     public func load() -> ShelfStoreLoadResult {
         guard fileManager.fileExists(atPath: snapshotURL.path) else {
             writeProtectionReason = nil
-            return ShelfStoreLoadResult(snapshot: AppSnapshot(sessions: [ShelfSession()], recentDestinations: [], selectedSessionID: nil))
+            return ShelfStoreLoadResult(snapshot: AppSnapshot(sessions: [ShelfSession()], recentDestinations: [], rememberedIngestTargetSessionID: nil))
         }
 
         do {
@@ -76,7 +76,7 @@ public final class ShelfStore {
         } catch {
             writeProtectionReason = Self.writeProtectionMessage
             return ShelfStoreLoadResult(
-                snapshot: AppSnapshot(sessions: [ShelfSession()], recentDestinations: [], selectedSessionID: nil),
+                snapshot: AppSnapshot(sessions: [ShelfSession()], recentDestinations: [], rememberedIngestTargetSessionID: nil),
                 warning: "Could not decode saved shelf state: \(error.localizedDescription). \(Self.writeProtectionMessage)"
             )
         }

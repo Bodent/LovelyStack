@@ -11,14 +11,14 @@ func appSnapshotRoundTripsSelectedSessionID() throws {
     let snapshot = AppSnapshot(
         sessions: [session],
         recentDestinations: [],
-        selectedSessionID: session.id
+        rememberedIngestTargetSessionID: session.id
     )
     let store = ShelfStore(baseDirectory: directory)
 
     try store.save(snapshot)
     let reloaded = store.load().snapshot
 
-    #expect(reloaded.selectedSessionID == session.id)
+    #expect(reloaded.rememberedIngestTargetSessionID == session.id)
 }
 
 @Test("ingest adds files to the remembered shelf")
@@ -29,7 +29,7 @@ func shelfIngestAddsToRememberedShelf() throws {
     let first = ShelfSession(title: "First")
     let second = ShelfSession(title: "Second")
     let store = ShelfStore(baseDirectory: directory)
-    try store.save(AppSnapshot(sessions: [first, second], recentDestinations: [], selectedSessionID: second.id))
+    try store.save(AppSnapshot(sessions: [first, second], recentDestinations: [], rememberedIngestTargetSessionID: second.id))
 
     let incomingURL = directory.appendingPathComponent("incoming.txt")
     try Data("hello".utf8).write(to: incomingURL)
@@ -40,7 +40,7 @@ func shelfIngestAddsToRememberedShelf() throws {
 
     #expect(result.targetSessionID == second.id)
     #expect(result.addedCount == 1)
-    #expect(snapshot.selectedSessionID == second.id)
+    #expect(snapshot.rememberedIngestTargetSessionID == second.id)
     #expect(snapshot.sessions[1].items.contains(where: { testFileURLsMatch($0.url, incomingURL) }))
 }
 
@@ -55,7 +55,7 @@ func shelfIngestFallsBackToFirstShelf() throws {
         AppSnapshot(
             sessions: [first],
             recentDestinations: [],
-            selectedSessionID: UUID()
+            rememberedIngestTargetSessionID: UUID()
         )
     )
 
@@ -67,7 +67,7 @@ func shelfIngestFallsBackToFirstShelf() throws {
     let snapshot = store.load().snapshot
 
     #expect(result.targetSessionID == first.id)
-    #expect(snapshot.selectedSessionID == first.id)
+    #expect(snapshot.rememberedIngestTargetSessionID == first.id)
 }
 
 @Test("ingest dedupes files already present on the target shelf")
@@ -81,7 +81,7 @@ func shelfIngestDedupesExistingURLs() throws {
     let existingItem = try makeItem(in: directory, named: "existing.txt")
     let session = ShelfSession(title: "Inbox", items: [existingItem])
     let store = ShelfStore(baseDirectory: directory)
-    try store.save(AppSnapshot(sessions: [session], recentDestinations: [], selectedSessionID: session.id))
+    try store.save(AppSnapshot(sessions: [session], recentDestinations: [], rememberedIngestTargetSessionID: session.id))
 
     let ingest = ShelfIngestService(store: store)
     let result = try ingest.add(urls: [incomingURL])
@@ -102,7 +102,7 @@ func shelfIngestAcceptsFilesAndFolders() throws {
 
     let session = ShelfSession(title: "Inbox")
     let store = ShelfStore(baseDirectory: directory)
-    try store.save(AppSnapshot(sessions: [session], recentDestinations: [], selectedSessionID: session.id))
+    try store.save(AppSnapshot(sessions: [session], recentDestinations: [], rememberedIngestTargetSessionID: session.id))
 
     let ingest = ShelfIngestService(store: store)
     let result = try ingest.add(urls: [fileURL, folderURL])

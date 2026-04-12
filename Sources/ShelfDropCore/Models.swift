@@ -423,15 +423,44 @@ public struct BatchMutation: Sendable {
 public struct AppSnapshot: Codable, Sendable {
     public var sessions: [ShelfSession]
     public var recentDestinations: [URL]
-    public var selectedSessionID: UUID?
+    public var rememberedIngestTargetSessionID: UUID?
 
     public init(
         sessions: [ShelfSession],
         recentDestinations: [URL],
-        selectedSessionID: UUID? = nil
+        rememberedIngestTargetSessionID: UUID? = nil
     ) {
         self.sessions = sessions
         self.recentDestinations = recentDestinations
-        self.selectedSessionID = selectedSessionID
+        self.rememberedIngestTargetSessionID = rememberedIngestTargetSessionID
+    }
+
+    public var selectedSessionID: UUID? {
+        get { rememberedIngestTargetSessionID }
+        set { rememberedIngestTargetSessionID = newValue }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sessions
+        case recentDestinations
+        case rememberedIngestTargetSessionID
+        case selectedSessionID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessions = try container.decode([ShelfSession].self, forKey: .sessions)
+        recentDestinations = try container.decode([URL].self, forKey: .recentDestinations)
+        rememberedIngestTargetSessionID =
+            try container.decodeIfPresent(UUID.self, forKey: .rememberedIngestTargetSessionID)
+            ?? container.decodeIfPresent(UUID.self, forKey: .selectedSessionID)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sessions, forKey: .sessions)
+        try container.encode(recentDestinations, forKey: .recentDestinations)
+        try container.encodeIfPresent(rememberedIngestTargetSessionID, forKey: .rememberedIngestTargetSessionID)
+        try container.encodeIfPresent(rememberedIngestTargetSessionID, forKey: .selectedSessionID)
     }
 }

@@ -44,7 +44,27 @@ func selectingShelfPersistsRememberedTarget() throws {
     viewModel.select(sessionID: second.id)
     let snapshot = store.load().snapshot
 
-    #expect(snapshot.selectedSessionID == second.id)
+    #expect(snapshot.rememberedIngestTargetSessionID == second.id)
+}
+
+@MainActor
+@Test("scene selection stays local and does not rewrite the remembered ingest target")
+func sceneSelectionDoesNotPersistRememberedTarget() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let first = ShelfSession(title: "First")
+    let second = ShelfSession(title: "Second")
+    let (viewModel, store) = try makeViewModel(
+        in: directory,
+        snapshot: AppSnapshot(sessions: [first, second], recentDestinations: [])
+    )
+    let sceneState = ShelfSceneState(viewModel: viewModel)
+
+    sceneState.select(sessionID: second.id)
+
+    #expect(sceneState.selectedSessionID == second.id)
+    #expect(store.load().snapshot.rememberedIngestTargetSessionID == first.id)
 }
 
 @MainActor
@@ -70,7 +90,7 @@ func deletingSelectedShelfSelectsNextShelf() throws {
     #expect(viewModel.sessions.map(\.id) == [first.id, third.id])
     #expect(viewModel.selectedSessionID == third.id)
     #expect(viewModel.selectedItemIDs.isEmpty)
-    #expect(storeSnapshot(in: directory).selectedSessionID == third.id)
+    #expect(storeSnapshot(in: directory).rememberedIngestTargetSessionID == third.id)
 }
 
 @MainActor
@@ -92,7 +112,7 @@ func deletingSelectedLastShelfSelectsPreviousShelf() throws {
 
     #expect(viewModel.sessions.map(\.id) == [first.id])
     #expect(viewModel.selectedSessionID == first.id)
-    #expect(store.load().snapshot.selectedSessionID == first.id)
+    #expect(store.load().snapshot.rememberedIngestTargetSessionID == first.id)
 }
 
 @MainActor
@@ -140,7 +160,7 @@ func deletingFinalShelfPersistsReplacementSnapshot() throws {
     #expect(snapshot.sessions.count == 1)
     #expect(snapshot.sessions[0].id == viewModel.selectedSessionID)
     #expect(snapshot.sessions[0].items.isEmpty)
-    #expect(snapshot.selectedSessionID == viewModel.selectedSessionID)
+    #expect(snapshot.rememberedIngestTargetSessionID == viewModel.selectedSessionID)
 }
 
 @MainActor
@@ -154,7 +174,7 @@ func reloadFromStoreAppliesExternalIngest() throws {
     let snapshot = AppSnapshot(
         sessions: [first, second],
         recentDestinations: [],
-        selectedSessionID: second.id
+        rememberedIngestTargetSessionID: second.id
     )
     let (viewModel, store) = try makeViewModel(in: directory, snapshot: snapshot)
     let incomingURL = directory.appendingPathComponent("incoming.txt")

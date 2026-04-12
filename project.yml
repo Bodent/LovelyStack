@@ -32,6 +32,7 @@ targets:
         CFBundleDisplayName: ShelfDrop
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: ""
+        NSAppleEventsUsageDescription: ShelfDrop needs Finder access to read and update tags, labels, and comments on your files.
         NSServices:
           - NSMenuItem:
               default: Add to Shelf
@@ -44,6 +45,7 @@ targets:
       path: Config/ShelfDrop.entitlements
       properties:
         com.apple.security.app-sandbox: true
+        com.apple.security.automation.apple-events: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.application-groups:
           - group.com.lovelystack.shared
@@ -103,6 +105,7 @@ targets:
     platform: macOS
     sources:
       - path: Tests/ShelfDropCoreTests
+      - path: Tests/TestSupport
     dependencies:
       - target: ShelfDropCore
     settings:
@@ -116,6 +119,7 @@ targets:
     platform: macOS
     sources:
       - path: Tests/ShelfDropAppTests
+      - path: Tests/TestSupport
     dependencies:
       - target: ShelfDropApp
       - target: ShelfDropCore

@@ -45,11 +45,11 @@ private struct MenuBarExtraView: View {
             Divider()
 
             if !viewModel.selectedSession.items.isEmpty {
-                Text("\(viewModel.selectedSession.items.count) items on current shelf")
+                Text("\(viewModel.selectedSession.items.count) items on import target")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("Current shelf is empty")
+                Text("Import target is empty")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -85,6 +85,7 @@ private struct WindowChromeConfigurator: NSViewRepresentable {
     final class Coordinator {
         private weak var configuredWindow: NSWindow?
 
+        @MainActor
         func configure(_ window: NSWindow?) {
             guard !ProcessInfo.processInfo.isRunningTests else { return }
             guard let window else { return }
@@ -95,8 +96,6 @@ private struct WindowChromeConfigurator: NSViewRepresentable {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isMovableByWindowBackground = true
-            window.backgroundColor = .clear
-            window.isOpaque = false
             window.styleMask.insert(.fullSizeContentView)
 
             if #available(macOS 11.0, *) {

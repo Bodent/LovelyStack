@@ -36,7 +36,7 @@ final class AppContainer: ObservableObject {
 @MainActor
 final class ShelfViewModel: ObservableObject {
     @Published var sessions: [ShelfSession]
-    @Published var selectedSessionID: UUID
+    @Published var rememberedIngestTargetSessionID: UUID
     @Published var selectedItemIDs = Set<UUID>()
     @Published var recentDestinations: [URL]
     @Published var review: BatchPreview = .init(title: "Review", changes: [], issues: [], duplicateGroups: [])
@@ -76,7 +76,7 @@ final class ShelfViewModel: ObservableObject {
             catalog: catalog
         )
         self.sessions = snapshot.sessions
-        self.selectedSessionID = snapshot.selectedSessionID ?? snapshot.sessions[0].id
+        self.rememberedIngestTargetSessionID = snapshot.rememberedIngestTargetSessionID ?? snapshot.sessions[0].id
         self.recentDestinations = snapshot.recentDestinations
         if loadResult.warning == nil {
             persist()
@@ -86,7 +86,7 @@ final class ShelfViewModel: ObservableObject {
     }
 
     var selectedSessionIndex: Int {
-        sessions.firstIndex(where: { $0.id == selectedSessionID }) ?? 0
+        sessions.firstIndex(where: { $0.id == rememberedIngestTargetSessionID }) ?? 0
     }
 
     var selectedSession: ShelfSession {
@@ -94,8 +94,36 @@ final class ShelfViewModel: ObservableObject {
         set { sessions[selectedSessionIndex] = newValue }
     }
 
+    var selectedSessionID: UUID {
+        get { rememberedIngestTargetSessionID }
+        set { rememberedIngestTargetSessionID = newValue }
+    }
+
+    var defaultSceneSelectionID: UUID {
+        if sessions.contains(where: { $0.id == rememberedIngestTargetSessionID }) {
+            return rememberedIngestTargetSessionID
+        }
+        return sessions[0].id
+    }
+
+    func session(matching sessionID: UUID) -> ShelfSession? {
+        sessions.first(where: { $0.id == sessionID })
+    }
+
+    func items(in sessionID: UUID) -> [ShelfItem] {
+        session(matching: sessionID)?.items ?? []
+    }
+
     var selectedItems: [ShelfItem] {
         selectedSession.items.filter { selectedItemIDs.contains($0.id) }
+    }
+
+    func selectedItems(in sessionID: UUID, matching itemIDs: Set<UUID>) -> [ShelfItem] {
+        items(in: sessionID).filter { itemIDs.contains($0.id) }
+    }
+
+    func review(for sessionID: UUID) -> BatchPreview {
+        actions.review(items: items(in: sessionID))
     }
 
     var pinnedSessions: [ShelfSession] {
@@ -108,46 +136,59 @@ final class ShelfViewModel: ObservableObject {
 
     @Published var canUndo: Bool = false
 
-    func createShelf() {
+    @discardableResult
+    func createShelf() -> UUID {
         sessions.insert(ShelfSession(title: "Shelf \(sessions.count + 1)"), at: 0)
-        selectedSessionID = sessions[0].id
+        rememberedIngestTargetSessionID = sessions[0].id
         selectedItemIDs.removeAll()
         persist()
         rebuildVisibleItems()
         recalculateReview()
+        return sessions[0].id
     }
 
-    func deleteShelf(sessionID: UUID) {
-        guard let deleteIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+    @discardableResult
+    func deleteShelf(sessionID: UUID) -> UUID {
+        guard let deleteIndex = sessions.firstIndex(where: { $0.id == sessionID }) else {
+            return defaultSceneSelectionID
+        }
 
-        let deletingSelectedShelf = selectedSessionID == sessionID
+        let deletingRememberedTarget = rememberedIngestTargetSessionID == sessionID
         sessions.remove(at: deleteIndex)
 
         if sessions.isEmpty {
             let replacement = ShelfSession()
             sessions = [replacement]
-            selectedSessionID = replacement.id
+            rememberedIngestTargetSessionID = replacement.id
             selectedItemIDs.removeAll()
             persist()
             rebuildVisibleItems()
             recalculateReview()
-            return
+            return replacement.id
         }
 
-        if deletingSelectedShelf {
-            let replacementIndex = min(deleteIndex, sessions.count - 1)
-            selectedSessionID = sessions[replacementIndex].id
+        let replacementIndex = min(deleteIndex, sessions.count - 1)
+        let replacementSelectionID = sessions[replacementIndex].id
+
+        if deletingRememberedTarget {
+            rememberedIngestTargetSessionID = replacementSelectionID
             selectedItemIDs.removeAll()
         }
 
         persist()
         rebuildVisibleItems()
         recalculateReview()
+        return replacementSelectionID
     }
 
     func togglePinSelectedShelf() {
-        selectedSession.isPinned.toggle()
-        selectedSession.updatedAt = Date()
+        togglePin(sessionID: rememberedIngestTargetSessionID)
+    }
+
+    func togglePin(sessionID: UUID) {
+        guard let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[sessionIndex].isPinned.toggle()
+        sessions[sessionIndex].updatedAt = Date()
         persist()
     }
 
@@ -157,31 +198,44 @@ final class ShelfViewModel: ObservableObject {
 
     @discardableResult
     func renameSelectedShelfTitle(_ title: String) -> String {
+        renameShelfTitle(title, for: rememberedIngestTargetSessionID)
+    }
+
+    @discardableResult
+    func renameShelfTitle(_ title: String, for sessionID: UUID) -> String {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
+            return session(matching: sessionID)?.title ?? selectedSession.title
+        }
+
+        guard let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else {
             return selectedSession.title
         }
 
-        selectedSession.title = trimmed
-        selectedSession.updatedAt = Date()
+        sessions[sessionIndex].title = trimmed
+        sessions[sessionIndex].updatedAt = Date()
         persist()
-        return selectedSession.title
+        return sessions[sessionIndex].title
     }
 
     func select(sessionID: UUID) {
-        selectedSessionID = sessionID
+        rememberIngestTarget(sessionID: sessionID)
         selectedItemIDs.removeAll()
-        persist()
         rebuildVisibleItems()
         recalculateReview()
+    }
+
+    func rememberIngestTarget(sessionID: UUID) {
+        guard sessions.contains(where: { $0.id == sessionID }) else { return }
+        rememberedIngestTargetSessionID = sessionID
+        persist()
     }
 
     func addFiles(urls: [URL]) {
         guard !urls.isEmpty else { return }
         do {
-            let result = try ingest.add(urls: urls, targetSessionID: selectedSessionID)
+            let result = try addFiles(urls: urls, to: rememberedIngestTargetSessionID)
             guard !result.addedItems.isEmpty else { return }
-            applySnapshot(result.snapshot, refreshItems: false, preserveSelectedItems: false)
             selectedItemIDs = Set(result.addedItems.map(\.id))
             rebuildVisibleItems()
             recalculateReview()
@@ -190,40 +244,69 @@ final class ShelfViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    func addFiles(urls: [URL], to sessionID: UUID) throws -> ShelfIngestResult {
+        let result = try ingest.add(urls: urls, targetSessionID: sessionID)
+        applySnapshot(result.snapshot, refreshItems: false, preserveSelectedItems: false)
+        return result
+    }
+
     func removeSelectedFromShelf() {
         guard !selectedItemIDs.isEmpty else { return }
-        selectedSession.items.removeAll { selectedItemIDs.contains($0.id) }
-        selectedSession.updatedAt = Date()
+        removeItems(withIDs: selectedItemIDs, from: rememberedIngestTargetSessionID)
         selectedItemIDs.removeAll()
+    }
+
+    func removeItems(withIDs itemIDs: Set<UUID>, from sessionID: UUID) {
+        guard let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[sessionIndex].items.removeAll { itemIDs.contains($0.id) }
+        sessions[sessionIndex].updatedAt = Date()
         persist()
         rebuildVisibleItems()
         recalculateReview()
     }
 
     func clearShelf() {
-        selectedSession.items.removeAll()
-        selectedSession.updatedAt = Date()
+        clearShelf(sessionID: rememberedIngestTargetSessionID)
         selectedItemIDs.removeAll()
+    }
+
+    func clearShelf(sessionID: UUID) {
+        guard let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        sessions[sessionIndex].items.removeAll()
+        sessions[sessionIndex].updatedAt = Date()
         persist()
         rebuildVisibleItems()
         recalculateReview()
     }
 
     func revealSelectedInFinder() {
-        let urls = selectedItems.map(\.url)
+        revealInFinder(sessionID: rememberedIngestTargetSessionID, itemIDs: selectedItemIDs)
+    }
+
+    func revealInFinder(sessionID: UUID, itemIDs: Set<UUID>) {
+        let urls = selectedItems(in: sessionID, matching: itemIDs).map(\.url)
         guard !urls.isEmpty else { return }
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 
     func copySelectedPaths() {
-        let paths = selectedItems.map(\.url.path).joined(separator: "\n")
+        copyPaths(sessionID: rememberedIngestTargetSessionID, itemIDs: selectedItemIDs)
+    }
+
+    func copyPaths(sessionID: UUID, itemIDs: Set<UUID>) {
+        let paths = selectedItems(in: sessionID, matching: itemIDs).map(\.url.path).joined(separator: "\n")
         guard !paths.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(paths, forType: .string)
     }
 
     func openQuickLook() {
-        let urls = selectedItems.map(\.url)
+        openQuickLook(sessionID: rememberedIngestTargetSessionID, itemIDs: selectedItemIDs)
+    }
+
+    func openQuickLook(sessionID: UUID, itemIDs: Set<UUID>) {
+        let urls = selectedItems(in: sessionID, matching: itemIDs).map(\.url)
         guard !urls.isEmpty else { return }
         if urls.count == 1 {
             NSWorkspace.shared.open(urls[0])
@@ -233,91 +316,211 @@ final class ShelfViewModel: ObservableObject {
     }
 
     func performUndo() {
+        performUndo(
+            in: rememberedIngestTargetSessionID,
+            started: { [weak self] in
+                self?.isBusy = true
+            },
+            finished: { [weak self] message in
+                guard let self else { return }
+                self.isBusy = false
+                self.pendingPreview = nil
+                if let message {
+                    self.errorMessage = message
+                }
+            }
+        )
+    }
+
+    func performUndo(
+        in sessionID: UUID,
+        started: @escaping () -> Void,
+        finished: @escaping (String?) -> Void
+    ) {
         runAction(
             operation: { actions in
                 try await actions.undoLastBatch()
             },
             applyResult: { mutation in
                 if let mutation {
-                    self.apply(mutation)
+                    self.apply(mutation, to: sessionID)
                 }
-            }
+            },
+            started: started,
+            finished: finished
         )
     }
 
     func previewMove(destination: URL, mode: FileOperationMode) {
-        let items = selectedItems
-        let preview = actions.previewMove(items: items, to: destination, mode: mode)
-        presentPreview(
-            preview,
-            action: .move(sessionID: selectedSessionID, itemIDs: items.map(\.id), destination: destination, mode: mode)
+        pendingPreview = makeMovePreview(
+            sessionID: rememberedIngestTargetSessionID,
+            itemIDs: selectedItemIDs,
+            destination: destination,
+            mode: mode
         )
     }
 
     func previewArchive(root: URL) {
-        let items = selectedItems
-        let strategy = archiveStrategy
-        let preview = actions.previewArchive(items: items, root: root, strategy: strategy)
-        presentPreview(
-            preview,
-            action: .archive(sessionID: selectedSessionID, itemIDs: items.map(\.id), root: root, strategy: strategy)
+        pendingPreview = makeArchivePreview(
+            sessionID: rememberedIngestTargetSessionID,
+            itemIDs: selectedItemIDs,
+            root: root,
+            strategy: archiveStrategy
         )
     }
 
     func previewRename() {
-        let items = selectedItems
-        let pattern = renamePattern
-        let preview = actions.previewRename(items: items, pattern: pattern)
-        presentPreview(
-            preview,
-            action: .rename(sessionID: selectedSessionID, itemIDs: items.map(\.id), pattern: pattern)
+        pendingPreview = makeRenamePreview(
+            sessionID: rememberedIngestTargetSessionID,
+            itemIDs: selectedItemIDs,
+            pattern: renamePattern
         )
     }
 
     func previewMetadata() {
-        let items = selectedItems
-        let request = metadataRequest
-        let preview = actions.previewMetadata(items: items, request: request)
-        presentPreview(
-            preview,
-            action: .metadata(sessionID: selectedSessionID, itemIDs: items.map(\.id), request: request)
+        pendingPreview = makeMetadataPreview(
+            sessionID: rememberedIngestTargetSessionID,
+            itemIDs: selectedItemIDs,
+            request: metadataRequest
         )
     }
 
     func previewSafeDelete() {
-        let items = selectedItems
-        let preview = actions.previewSafeDelete(items: items)
-        presentPreview(
-            preview,
-            action: .safeDelete(sessionID: selectedSessionID, itemIDs: items.map(\.id))
+        pendingPreview = makeSafeDeletePreview(
+            sessionID: rememberedIngestTargetSessionID,
+            itemIDs: selectedItemIDs
         )
     }
 
     func previewZip(destination: URL, baseName: String) {
-        let items = selectedItems
-        let preview = actions.previewZip(items: items, destinationDirectory: destination, baseName: baseName)
-        presentPreview(
-            preview,
-            action: .zip(sessionID: selectedSessionID, itemIDs: items.map(\.id), destination: destination, baseName: baseName)
+        pendingPreview = makeZipPreview(
+            sessionID: rememberedIngestTargetSessionID,
+            itemIDs: selectedItemIDs,
+            destination: destination,
+            baseName: baseName
         )
     }
 
     func previewImageTransform(destination: URL) {
-        let items = selectedItems
-        let plan = imageTransformPlan
-        let preview = actions.previewImageTransform(items: items, plan: plan, destinationDirectory: destination)
-        presentPreview(
-            preview,
-            action: .imageTransform(sessionID: selectedSessionID, itemIDs: items.map(\.id), plan: plan, destination: destination)
+        pendingPreview = makeImageTransformPreview(
+            sessionID: rememberedIngestTargetSessionID,
+            itemIDs: selectedItemIDs,
+            plan: imageTransformPlan,
+            destination: destination
         )
     }
 
     func previewCreatePDF(destination: URL, baseName: String) {
-        let items = selectedItems
+        pendingPreview = makePDFPreview(
+            sessionID: rememberedIngestTargetSessionID,
+            itemIDs: selectedItemIDs,
+            destination: destination,
+            baseName: baseName
+        )
+    }
+
+    func makeMovePreview(
+        sessionID: UUID,
+        itemIDs: Set<UUID>,
+        destination: URL,
+        mode: FileOperationMode
+    ) -> PendingPreview {
+        let items = selectedItems(in: sessionID, matching: itemIDs)
+        let preview = actions.previewMove(items: items, to: destination, mode: mode)
+        return PendingPreview(
+            preview: preview,
+            action: .move(sessionID: sessionID, itemIDs: items.map(\.id), destination: destination, mode: mode)
+        )
+    }
+
+    func makeArchivePreview(
+        sessionID: UUID,
+        itemIDs: Set<UUID>,
+        root: URL,
+        strategy: ArchiveStrategy
+    ) -> PendingPreview {
+        let items = selectedItems(in: sessionID, matching: itemIDs)
+        let preview = actions.previewArchive(items: items, root: root, strategy: strategy)
+        return PendingPreview(
+            preview: preview,
+            action: .archive(sessionID: sessionID, itemIDs: items.map(\.id), root: root, strategy: strategy)
+        )
+    }
+
+    func makeRenamePreview(
+        sessionID: UUID,
+        itemIDs: Set<UUID>,
+        pattern: RenamePattern
+    ) -> PendingPreview {
+        let items = selectedItems(in: sessionID, matching: itemIDs)
+        let preview = actions.previewRename(items: items, pattern: pattern)
+        return PendingPreview(
+            preview: preview,
+            action: .rename(sessionID: sessionID, itemIDs: items.map(\.id), pattern: pattern)
+        )
+    }
+
+    func makeMetadataPreview(
+        sessionID: UUID,
+        itemIDs: Set<UUID>,
+        request: MetadataEditRequest
+    ) -> PendingPreview {
+        let items = selectedItems(in: sessionID, matching: itemIDs)
+        let preview = actions.previewMetadata(items: items, request: request)
+        return PendingPreview(
+            preview: preview,
+            action: .metadata(sessionID: sessionID, itemIDs: items.map(\.id), request: request)
+        )
+    }
+
+    func makeSafeDeletePreview(sessionID: UUID, itemIDs: Set<UUID>) -> PendingPreview {
+        let items = selectedItems(in: sessionID, matching: itemIDs)
+        let preview = actions.previewSafeDelete(items: items)
+        return PendingPreview(
+            preview: preview,
+            action: .safeDelete(sessionID: sessionID, itemIDs: items.map(\.id))
+        )
+    }
+
+    func makeZipPreview(
+        sessionID: UUID,
+        itemIDs: Set<UUID>,
+        destination: URL,
+        baseName: String
+    ) -> PendingPreview {
+        let items = selectedItems(in: sessionID, matching: itemIDs)
+        let preview = actions.previewZip(items: items, destinationDirectory: destination, baseName: baseName)
+        return PendingPreview(
+            preview: preview,
+            action: .zip(sessionID: sessionID, itemIDs: items.map(\.id), destination: destination, baseName: baseName)
+        )
+    }
+
+    func makeImageTransformPreview(
+        sessionID: UUID,
+        itemIDs: Set<UUID>,
+        plan: ImageTransformPlan,
+        destination: URL
+    ) -> PendingPreview {
+        let items = selectedItems(in: sessionID, matching: itemIDs)
+        let preview = actions.previewImageTransform(items: items, plan: plan, destinationDirectory: destination)
+        return PendingPreview(
+            preview: preview,
+            action: .imageTransform(sessionID: sessionID, itemIDs: items.map(\.id), plan: plan, destination: destination)
+        )
+    }
+
+    func makePDFPreview(
+        sessionID: UUID,
+        itemIDs: Set<UUID>,
+        destination: URL,
+        baseName: String
+    ) -> PendingPreview {
+        let items = selectedItems(in: sessionID, matching: itemIDs)
         let preview = actions.previewPDF(from: items, destinationDirectory: destination, baseName: baseName)
-        presentPreview(
-            preview,
-            action: .createPDF(sessionID: selectedSessionID, itemIDs: items.map(\.id), destination: destination, baseName: baseName)
+        return PendingPreview(
+            preview: preview,
+            action: .createPDF(sessionID: sessionID, itemIDs: items.map(\.id), destination: destination, baseName: baseName)
         )
     }
 
@@ -327,11 +530,33 @@ final class ShelfViewModel: ObservableObject {
 
     func confirmPendingPreview() {
         guard let pendingPreview else { return }
+        confirm(
+            pendingPreview,
+            started: { [weak self] in
+                self?.isBusy = true
+            },
+            finished: { [weak self] message in
+                guard let self else { return }
+                self.isBusy = false
+                self.pendingPreview = nil
+                if let message {
+                    self.errorMessage = message
+                }
+            }
+        )
+    }
+
+    func confirm(
+        _ pendingPreview: PendingPreview,
+        started: @escaping () -> Void,
+        finished: @escaping (String?) -> Void
+    ) {
         guard let items = resolveItems(for: pendingPreview.action) else {
-            self.pendingPreview = nil
-            errorMessage = "The selected items changed after this preview was generated. Run the preview again before executing."
+            finished("The selected items changed after this preview was generated. Run the preview again before executing.")
             return
         }
+
+        let sessionID = pendingPreview.action.sessionID
 
         switch pendingPreview.action {
         case let .move(_, _, destination, mode):
@@ -341,8 +566,10 @@ final class ShelfViewModel: ObservableObject {
                 },
                 applyResult: { mutation in
                     self.remember(destination: destination)
-                    self.apply(mutation)
-                }
+                    self.apply(mutation, to: sessionID)
+                },
+                started: started,
+                finished: finished
             )
         case let .archive(_, _, root, strategy):
             runAction(
@@ -351,8 +578,10 @@ final class ShelfViewModel: ObservableObject {
                 },
                 applyResult: { mutation in
                     self.remember(destination: root)
-                    self.apply(mutation)
-                }
+                    self.apply(mutation, to: sessionID)
+                },
+                started: started,
+                finished: finished
             )
         case let .rename(_, _, pattern):
             runAction(
@@ -360,8 +589,10 @@ final class ShelfViewModel: ObservableObject {
                     try await actions.executeRename(items: items, pattern: pattern)
                 },
                 applyResult: { mutation in
-                    self.apply(mutation)
-                }
+                    self.apply(mutation, to: sessionID)
+                },
+                started: started,
+                finished: finished
             )
         case let .metadata(_, _, request):
             runAction(
@@ -369,8 +600,10 @@ final class ShelfViewModel: ObservableObject {
                     try await actions.executeMetadata(items: items, request: request)
                 },
                 applyResult: { mutation in
-                    self.apply(mutation)
-                }
+                    self.apply(mutation, to: sessionID)
+                },
+                started: started,
+                finished: finished
             )
         case .safeDelete:
             runAction(
@@ -378,8 +611,10 @@ final class ShelfViewModel: ObservableObject {
                     try await actions.executeSafeDelete(items: items)
                 },
                 applyResult: { mutation in
-                    self.apply(mutation)
-                }
+                    self.apply(mutation, to: sessionID)
+                },
+                started: started,
+                finished: finished
             )
         case let .zip(_, _, destination, baseName):
             runAction(
@@ -388,8 +623,10 @@ final class ShelfViewModel: ObservableObject {
                 },
                 applyResult: { mutation in
                     self.remember(destination: destination)
-                    self.apply(mutation)
-                }
+                    self.apply(mutation, to: sessionID)
+                },
+                started: started,
+                finished: finished
             )
         case let .imageTransform(_, _, plan, destination):
             runAction(
@@ -398,8 +635,10 @@ final class ShelfViewModel: ObservableObject {
                 },
                 applyResult: { mutation in
                     self.remember(destination: destination)
-                    self.apply(mutation)
-                }
+                    self.apply(mutation, to: sessionID)
+                },
+                started: started,
+                finished: finished
             )
         case let .createPDF(_, _, destination, baseName):
             runAction(
@@ -408,8 +647,10 @@ final class ShelfViewModel: ObservableObject {
                 },
                 applyResult: { mutation in
                     self.remember(destination: destination)
-                    self.apply(mutation)
-                }
+                    self.apply(mutation, to: sessionID)
+                },
+                started: started,
+                finished: finished
             )
         }
     }
@@ -438,28 +679,36 @@ final class ShelfViewModel: ObservableObject {
 
     private func runAction<Result: Sendable>(
         operation: @escaping @Sendable (FileActionService) async throws -> Result,
-        applyResult: @escaping (Result) -> Void
+        applyResult: @escaping (Result) -> Void,
+        started: @escaping () -> Void,
+        finished: @escaping (String?) -> Void
     ) {
-        isBusy = true
+        started()
         let actions = self.actions
         Task { [weak self] in
             guard let self else { return }
+            var failureMessage: String?
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
                     try await operation(actions)
                 }.value
                 applyResult(result)
             } catch {
-                errorMessage = error.localizedDescription
+                failureMessage = error.localizedDescription
             }
-            isBusy = false
-            pendingPreview = nil
             canUndo = await actions.canUndo
+            finished(failureMessage)
         }
     }
 
     private func apply(_ mutation: BatchMutation) {
-        var updatedItems = selectedSession.items
+        apply(mutation, to: rememberedIngestTargetSessionID)
+    }
+
+    private func apply(_ mutation: BatchMutation, to sessionID: UUID) {
+        guard let sessionIndex = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+
+        var updatedItems = sessions[sessionIndex].items
 
         updatedItems.removeAll { mutation.removedItemIDs.contains($0.id) || mutation.removedURLs.contains($0.url) }
         updatedItems = updatedItems.map { item in
@@ -479,9 +728,11 @@ final class ShelfViewModel: ObservableObject {
         let filteredAdditions = additions.filter { !existingURLs.contains($0.url) }
         updatedItems.append(contentsOf: filteredAdditions)
 
-        selectedSession.items = updatedItems.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
-        selectedSession.updatedAt = Date()
-        selectedItemIDs.subtract(mutation.removedItemIDs)
+        sessions[sessionIndex].items = updatedItems.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+        sessions[sessionIndex].updatedAt = Date()
+        if rememberedIngestTargetSessionID == sessionID {
+            selectedItemIDs.subtract(mutation.removedItemIDs)
+        }
         persist()
         rebuildVisibleItems()
         recalculateReview()
@@ -500,11 +751,11 @@ final class ShelfViewModel: ObservableObject {
         )
 
         sessions = normalized.sessions
-        selectedSessionID = normalized.selectedSessionID ?? normalized.sessions[0].id
+        rememberedIngestTargetSessionID = normalized.rememberedIngestTargetSessionID ?? normalized.sessions[0].id
         recentDestinations = normalized.recentDestinations
 
         if preserveSelectedItems {
-            let validItemIDs = Set(selectedSession.items.map(\.id))
+            let validItemIDs = Set(session(matching: defaultSceneSelectionID)?.items.map(\.id) ?? [])
             selectedItemIDs = previousSelectedItems.intersection(validItemIDs)
         } else {
             selectedItemIDs.removeAll()
@@ -536,14 +787,14 @@ final class ShelfViewModel: ObservableObject {
         let normalizedSessions = refreshItems
             ? restoredSessions.map { refreshSession($0, catalog: catalog) }
             : restoredSessions
-        let selectedSessionID = normalizedSessions.contains(where: { $0.id == snapshot.selectedSessionID })
-            ? snapshot.selectedSessionID
+        let rememberedIngestTargetSessionID = normalizedSessions.contains(where: { $0.id == snapshot.rememberedIngestTargetSessionID })
+            ? snapshot.rememberedIngestTargetSessionID
             : normalizedSessions[0].id
 
         return AppSnapshot(
             sessions: normalizedSessions,
             recentDestinations: snapshot.recentDestinations,
-            selectedSessionID: selectedSessionID
+            rememberedIngestTargetSessionID: rememberedIngestTargetSessionID
         )
     }
 
@@ -560,7 +811,7 @@ final class ShelfViewModel: ObservableObject {
             let snapshot = AppSnapshot(
                 sessions: sessions,
                 recentDestinations: recentDestinations,
-                selectedSessionID: selectedSessionID
+                rememberedIngestTargetSessionID: rememberedIngestTargetSessionID
             )
             try store.save(snapshot)
         } catch {
