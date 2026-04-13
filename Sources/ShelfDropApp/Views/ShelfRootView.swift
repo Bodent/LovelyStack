@@ -598,6 +598,7 @@ private struct InspectorPanel: View {
             }
         }
         .listStyle(.sidebar)
+        .controlSize(.small)
     }
 
     private var previewContent: some View {
@@ -612,16 +613,16 @@ private struct InspectorPanel: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.displayName)
-                            .font(.headline)
+                            .font(.system(size: 12, weight: .medium))
                         Text(item.url.path)
-                            .font(.caption)
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .lineLimit(3)
 
                         if !item.tags.isEmpty {
                             Text(item.tags.joined(separator: ", "))
-                                .font(.caption)
+                                .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 4)
                         }
@@ -639,7 +640,7 @@ private struct InspectorPanel: View {
     }
 
     private var filingContent: some View {
-        Group {
+        inspectorGrid {
             actionButton("Move to Folder…", enabled: !sceneState.selectedItemIDs.isEmpty) {
                 if let destination = FolderPicker.chooseFolder(title: "Move Selected Files") {
                     sceneState.previewMove(destination: destination, mode: .move)
@@ -651,14 +652,12 @@ private struct InspectorPanel: View {
                 }
             }
 
-            inspectorLabeledRow("Archive Strategy") {
-                Picker("Archive Strategy", selection: $sceneState.archiveStrategy) {
-                    ForEach(ArchiveStrategy.allCases) { strategy in
-                        Text(strategy.displayName).tag(strategy)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
+            inspectorMenuPicker(
+                "Archive Strategy",
+                selection: $sceneState.archiveStrategy,
+                options: Array(ArchiveStrategy.allCases)
+            ) { strategy in
+                strategy.displayName
             }
 
             actionButton("Archive to Root…", enabled: !sceneState.selectedItemIDs.isEmpty) {
@@ -701,13 +700,13 @@ private struct InspectorPanel: View {
             .padding(.top, 10)
         } label: {
             Text(title)
-                .font(.headline)
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
     }
 
     private var renameContent: some View {
-        Group {
+        inspectorGrid {
             inspectorLabeledRow("Strip prefixes\n(comma sep.)") {
                 TextField("", text: Binding(
                     get: { sceneState.renamePattern.prefixesToRemove.joined(separator: ", ") },
@@ -732,36 +731,34 @@ private struct InspectorPanel: View {
                 ))
             }
 
-            inspectorLabeledRow("Separator") {
-                Picker("Separator", selection: $sceneState.renamePattern.separator) {
-                    ForEach(RenameSeparator.allCases) { separator in
-                        Text(separator.displayName).tag(separator)
-                    }
-                }
-                .labelsHidden()
+            inspectorMenuPicker(
+                "Separator",
+                selection: $sceneState.renamePattern.separator,
+                options: Array(RenameSeparator.allCases)
+            ) { separator in
+                separator.displayName
             }
 
-            inspectorLabeledRow("Case Style") {
-                Picker("Case Style", selection: $sceneState.renamePattern.caseStyle) {
-                    ForEach(RenameCaseStyle.allCases) { style in
-                        Text(style.rawValue.capitalized).tag(style)
-                    }
-                }
-                .labelsHidden()
+            inspectorMenuPicker(
+                "Case Style",
+                selection: $sceneState.renamePattern.caseStyle,
+                options: Array(RenameCaseStyle.allCases)
+            ) { style in
+                style.rawValue.capitalized
             }
 
-            inspectorLabeledRow("Append Date") {
-                Picker("Append Date", selection: $sceneState.renamePattern.dateSource) {
-                    ForEach(RenameDateSource.allCases) { source in
-                        Text(source.rawValue.capitalized).tag(source)
-                    }
-                }
-                .labelsHidden()
+            inspectorMenuPicker(
+                "Append Date",
+                selection: $sceneState.renamePattern.dateSource,
+                options: Array(RenameDateSource.allCases)
+            ) { source in
+                source.rawValue.capitalized
             }
 
             inspectorLabeledRow("Include Counter") {
                 Toggle("Include Counter", isOn: $sceneState.renamePattern.includeCounter)
                     .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
             inspectorLabeledRow("Custom Prefix") {
@@ -778,7 +775,7 @@ private struct InspectorPanel: View {
     }
 
     private var metadataContent: some View {
-        Group {
+        inspectorGrid {
             inspectorLabeledRow("Tags (comma sep.)") {
                 TextField("", text: Binding(
                     get: { sceneState.metadataRequest.tags.joined(separator: ", ") },
@@ -791,13 +788,12 @@ private struct InspectorPanel: View {
                 ))
             }
 
-            inspectorLabeledRow("Finder Label") {
-                Picker("Finder Label", selection: $sceneState.metadataRequest.label) {
-                    ForEach(FinderLabelColor.allCases) { label in
-                        Text(label.displayName).tag(label)
-                    }
-                }
-                .labelsHidden()
+            inspectorMenuPicker(
+                "Finder Label",
+                selection: $sceneState.metadataRequest.label,
+                options: Array(FinderLabelColor.allCases)
+            ) { label in
+                label.displayName
             }
 
             inspectorLabeledRow("Finder Comment") {
@@ -815,7 +811,7 @@ private struct InspectorPanel: View {
     }
 
     private var transformsContent: some View {
-        Group {
+        inspectorGrid {
             inspectorLabeledRow("ZIP Name") {
                 TextField("", text: $zipBaseName)
             }
@@ -827,18 +823,18 @@ private struct InspectorPanel: View {
 
             Divider()
 
-            inspectorLabeledRow("Image Output") {
-                Picker("Image Output", selection: $sceneState.imageTransformPlan.outputFormat) {
-                    ForEach(ImageOutputFormat.allCases) { format in
-                        Text(format.rawValue.uppercased()).tag(format)
-                    }
-                }
-                .labelsHidden()
+            inspectorMenuPicker(
+                "Image Output",
+                selection: $sceneState.imageTransformPlan.outputFormat,
+                options: Array(ImageOutputFormat.allCases)
+            ) { format in
+                format.rawValue.uppercased()
             }
 
             inspectorLabeledRow("Strip Metadata") {
                 Toggle("Strip Metadata", isOn: $sceneState.imageTransformPlan.stripMetadata)
                     .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
             inspectorLabeledRow("Max Size (px)") {
@@ -864,13 +860,68 @@ private struct InspectorPanel: View {
         }
     }
 
-    private func inspectorLabeledRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        LabeledContent {
+    private func inspectorGrid<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
             content()
-        } label: {
-            Text(title)
-                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func inspectorMenuPicker<Value: Hashable>(
+        _ title: String,
+        selection: Binding<Value>,
+        options: [Value],
+        optionTitle: @escaping (Value) -> String
+    ) -> some View {
+        inspectorLabeledRow(title) {
+            if #available(macOS 26.0, *) {
+                inspectorPickerControl(
+                    selection: selection,
+                    options: options,
+                    optionTitle: optionTitle
+                )
+                .buttonSizing(.flexible)
+            } else {
+                inspectorPickerControl(
+                    selection: selection,
+                    options: options,
+                    optionTitle: optionTitle
+                )
+            }
+        }
+    }
+
+    private func inspectorPickerControl<Value: Hashable>(
+        selection: Binding<Value>,
+        options: [Value],
+        optionTitle: @escaping (Value) -> String
+    ) -> some View {
+        Picker("", selection: selection) {
+            ForEach(options, id: \.self) { option in
+                Text(optionTitle(option)).tag(option)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .multilineTextAlignment(.trailing)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func inspectorLabeledRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 112, alignment: .leading)
+
+            content()
+                .font(.system(size: 12))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var issuesContent: some View {
@@ -895,6 +946,7 @@ private struct InspectorPanel: View {
 
     private func actionButton(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
+            .font(.system(size: 12))
             .disabled(!enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
