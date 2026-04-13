@@ -77,6 +77,12 @@ final class ShelfSceneState: ObservableObject {
         rebuildDerivedState()
     }
 
+    @discardableResult
+    func createShelf(title: String) -> String {
+        createShelf()
+        return renameShelfTitle(title, for: selectedSessionID)
+    }
+
     func deleteShelf(sessionID: UUID) {
         let remainingSelection = viewModel.deleteShelf(sessionID: sessionID)
         if selectedSessionID == sessionID || viewModel.session(matching: selectedSessionID) == nil {
@@ -88,7 +94,12 @@ final class ShelfSceneState: ObservableObject {
 
     @discardableResult
     func renameSelectedShelfTitle(_ title: String) -> String {
-        let resolvedTitle = viewModel.renameShelfTitle(title, for: selectedSessionID)
+        renameShelfTitle(title, for: selectedSessionID)
+    }
+
+    @discardableResult
+    func renameShelfTitle(_ title: String, for sessionID: UUID) -> String {
+        let resolvedTitle = viewModel.renameShelfTitle(title, for: sessionID)
         rebuildDerivedState()
         return resolvedTitle
     }

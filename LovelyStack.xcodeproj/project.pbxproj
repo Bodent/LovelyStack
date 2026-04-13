@@ -562,7 +562,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.1;
+				MARKETING_VERSION = 0.3.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDrop;
 				PRODUCT_NAME = ShelfDrop;
 				SDKROOT = macosx;
@@ -608,7 +608,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.1;
+				MARKETING_VERSION = 0.3.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDropFinderAction;
 				PRODUCT_NAME = ShelfDropFinderAction;
 				SDKROOT = macosx;
@@ -692,7 +692,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.1;
+				MARKETING_VERSION = 0.3.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDrop;
 				PRODUCT_NAME = ShelfDrop;
 				SDKROOT = macosx;
@@ -843,7 +843,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.1;
+				MARKETING_VERSION = 0.3.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lovelystack.ShelfDropFinderAction;
 				PRODUCT_NAME = ShelfDropFinderAction;
 				SDKROOT = macosx;

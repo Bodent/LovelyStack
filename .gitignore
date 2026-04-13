@@ -3,5 +3,6 @@
 .xcodebuild/
 .swiftpm/
 DerivedData/
+.derivedData/
 xcuserdata/
 *.xcuserstate

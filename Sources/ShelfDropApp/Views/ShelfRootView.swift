@@ -7,7 +7,6 @@ struct ShelfRootView: View {
     @StateObject private var sceneState: ShelfSceneState
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @SceneStorage("inspector.isPresented") private var isInspectorPresented = true
-    @State private var renameShelfTitle = ""
     @State private var zipBaseName = "Shelf Bundle"
     @State private var pdfBaseName = "Combined Images"
     @State private var isDropTargeted = false
@@ -22,7 +21,6 @@ struct ShelfRootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SessionsSidebar(
                 sceneState: sceneState,
-                renameShelfTitle: $renameShelfTitle,
                 pendingShelfDeletion: $pendingShelfDeletion
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
@@ -97,7 +95,6 @@ struct ShelfRootView: View {
         ) { pending in
             Button("Delete Shelf", role: .destructive) {
                 sceneState.deleteShelf(sessionID: pending.sessionID)
-                renameShelfTitle = sceneState.selectedSession.title
                 pendingShelfDeletion = nil
             }
             Button("Cancel", role: .cancel) {
@@ -225,9 +222,10 @@ private struct WindowSurfaceBackground: View {
 
 private struct SessionsSidebar: View {
     @ObservedObject var sceneState: ShelfSceneState
-    @Binding var renameShelfTitle: String
     @Binding var pendingShelfDeletion: PendingShelfDeletion?
-    @FocusState private var isEditingShelfTitle: Bool
+    @State private var newShelfTitle = ""
+    @State private var editingSessionID: UUID?
+    @State private var editingShelfTitle = ""
 
     var body: some View {
         List(selection: Binding(
@@ -237,47 +235,50 @@ private struct SessionsSidebar: View {
             if !sceneState.pinnedSessions.isEmpty {
                 Section("Pinned") {
                     ForEach(sceneState.pinnedSessions) { session in
-                        SidebarRow(session: session)
+                        SidebarRow(
+                            session: session,
+                            isEditing: editingSessionID == session.id,
+                            editingTitle: $editingShelfTitle,
+                            onCommitRename: commitShelfRename
+                        )
                             .tag(session.id)
-                            .contextMenu {
-                                Button("Delete Shelf", role: .destructive) {
-                                    requestDelete(session)
-                                }
-                            }
                     }
                 }
             }
 
             Section("Recent") {
                 ForEach(sceneState.recentSessions) { session in
-                    SidebarRow(session: session)
+                    SidebarRow(
+                        session: session,
+                        isEditing: editingSessionID == session.id,
+                        editingTitle: $editingShelfTitle,
+                        onCommitRename: commitShelfRename
+                    )
                         .tag(session.id)
-                        .contextMenu {
-                            Button("Delete Shelf", role: .destructive) {
-                                requestDelete(session)
-                            }
-                        }
                 }
             }
         }
         .listStyle(.sidebar)
+        .contextMenu(forSelectionType: UUID.self) { items in
+            if let session = contextMenuSession(for: items) {
+                Button("Delete Shelf", role: .destructive) {
+                    requestDelete(session)
+                }
+            }
+        } primaryAction: { items in
+            guard let session = contextMenuSession(for: items) else { return }
+            beginRenaming(session)
+        }
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 8) {
                 Divider()
-                TextField("Shelf title", text: Binding(
-                    get: { renameShelfTitle },
-                    set: { renameShelfTitle = $0 }
-                ))
+                TextField("New shelf title", text: $newShelfTitle)
                 .textFieldStyle(.roundedBorder)
-                .focused($isEditingShelfTitle)
                 .onSubmit {
-                    renameShelfTitle = sceneState.renameSelectedShelfTitle(renameShelfTitle)
+                    createShelf()
                 }
 
-                Button {
-                    sceneState.createShelf()
-                    renameShelfTitle = sceneState.selectedSession.title
-                } label: {
+                Button(action: createShelf) {
                     Label("New Shelf", systemImage: "plus")
                         .frame(maxWidth: .infinity)
                 }
@@ -287,15 +288,9 @@ private struct SessionsSidebar: View {
             .padding()
             .background(.bar)
         }
-        .onAppear {
-            renameShelfTitle = sceneState.selectedSession.title
-        }
         .onChange(of: sceneState.selectedSessionID) {
-            renameShelfTitle = sceneState.selectedSession.title
-        }
-        .onChange(of: isEditingShelfTitle) {
-            if !isEditingShelfTitle {
-                renameShelfTitle = sceneState.renameSelectedShelfTitle(renameShelfTitle)
+            if let editingSessionID, editingSessionID != sceneState.selectedSessionID {
+                commitShelfRename()
             }
         }
     }
@@ -303,21 +298,71 @@ private struct SessionsSidebar: View {
     private func requestDelete(_ session: ShelfSession) {
         guard !session.items.isEmpty else {
             sceneState.deleteShelf(sessionID: session.id)
-            renameShelfTitle = sceneState.selectedSession.title
             return
         }
 
         pendingShelfDeletion = PendingShelfDeletion(session: session)
     }
+
+    private func createShelf() {
+        sceneState.createShelf(title: newShelfTitle)
+        newShelfTitle = ""
+    }
+
+    private func contextMenuSession(for items: Set<UUID>) -> ShelfSession? {
+        guard items.count == 1, let sessionID = items.first else { return nil }
+        return (sceneState.pinnedSessions + sceneState.recentSessions)
+            .first(where: { $0.id == sessionID })
+    }
+
+    private func beginRenaming(_ session: ShelfSession) {
+        if editingSessionID != session.id {
+            commitShelfRename()
+        }
+
+        sceneState.select(sessionID: session.id)
+        editingSessionID = session.id
+        editingShelfTitle = session.title
+    }
+
+    private func commitShelfRename() {
+        guard let sessionID = editingSessionID else { return }
+        editingShelfTitle = sceneState.renameShelfTitle(editingShelfTitle, for: sessionID)
+        editingSessionID = nil
+    }
 }
 
 private struct SidebarRow: View {
     let session: ShelfSession
+    let isEditing: Bool
+    @Binding var editingTitle: String
+    let onCommitRename: () -> Void
+
+    @FocusState private var isRenameFieldFocused: Bool
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(session.title)
-                    .lineLimit(1)
+                if isEditing {
+                    TextField("Shelf title", text: $editingTitle)
+                        .textFieldStyle(.plain)
+                        .focused($isRenameFieldFocused)
+                        .onSubmit(onCommitRename)
+                        .onAppear {
+                            DispatchQueue.main.async {
+                                isRenameFieldFocused = true
+                            }
+                        }
+                        .onChange(of: isRenameFieldFocused) {
+                            if !isRenameFieldFocused {
+                                onCommitRename()
+                            }
+                        }
+                } else {
+                    Text(session.title)
+                        .lineLimit(1)
+                }
+
                 Text("\(session.items.count) item\(session.items.count == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
